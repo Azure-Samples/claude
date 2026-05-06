@@ -49,9 +49,7 @@ def main() -> int:
     )
 
     for block in message.content:
-        text = getattr(block, "text", None)
-        if text:
-            print(text)
+        print(block.text)
 
     print(f"\n[usage] input={message.usage.input_tokens} output={message.usage.output_tokens}")
     return 0

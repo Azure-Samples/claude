@@ -79,9 +79,7 @@ def main() -> int:
         messages=[{"role": "user", "content": "What are 3 things to visit in Seattle?"}],
     )
     for block in msg.content:
-        text = getattr(block, "text", None)
-        if text:
-            print(text)
+        print(block.text)
     print(f"\n[usage] input={msg.usage.input_tokens} output={msg.usage.output_tokens}")
     return 0
 
