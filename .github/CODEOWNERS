@@ -1,0 +1,27 @@
+# Code owners for Azure-Samples/claude
+#
+# Each line is a file pattern followed by one or more owners.
+# Order matters: the last matching pattern wins.
+# Owners are auto-requested for review on PRs that touch matching files.
+# See https://docs.github.com/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/about-code-owners
+
+# Default owner for everything in this repo
+*       @achandmsft
+
+# Infrastructure-as-Code variants
+/infra-bicep/       @achandmsft
+/infra-terraform/   @achandmsft
+
+# Shared azd hooks and helper scripts
+/scripts/   @achandmsft
+
+# Python samples
+/src/   @achandmsft
+
+# Community / governance files (require owner sign-off)
+/.github/                @achandmsft
+/CODE_OF_CONDUCT.md      @achandmsft
+/CONTRIBUTING.md         @achandmsft
+/SECURITY.md             @achandmsft
+/SUPPORT.md              @achandmsft
+/LICENSE                 @achandmsft
