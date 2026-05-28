@@ -232,6 +232,60 @@ if (-not $SkipVsCodeSettings) {
 }
 
 # ---------------------------------------------------------------------------
+# 2b. Write / merge `.claude/settings.json` to pin the workspace default model
+# to a deployed family. Avoids "model X is not available on your foundry
+# deployment" when the user's global ~/.claude/settings.json has `model` set
+# to a family this workspace didn't deploy.
+# ---------------------------------------------------------------------------
+# Family priority: sonnet > opus > haiku (matches outputs.tf legacy
+# CLAUDE_DEPLOYMENT_NAME picker and the README's "recommended general default").
+$workspaceModelFamily = $null
+foreach ($d in $deployments) {
+    if ($d.Family -eq 'SONNET') { $workspaceModelFamily = 'sonnet'; break }
+}
+if (-not $workspaceModelFamily) {
+    foreach ($d in $deployments) {
+        if ($d.Family -eq 'OPUS') { $workspaceModelFamily = 'opus'; break }
+    }
+}
+if (-not $workspaceModelFamily) {
+    foreach ($d in $deployments) {
+        if ($d.Family -eq 'HAIKU') { $workspaceModelFamily = 'haiku'; break }
+    }
+}
+
+if ($workspaceModelFamily) {
+    $claudeDir = Join-Path $RepoRoot '.claude'
+    $claudeSettingsPath = Join-Path $claudeDir 'settings.json'
+    if (-not (Test-Path $claudeDir)) {
+        New-Item -ItemType Directory -Path $claudeDir -Force | Out-Null
+    }
+
+    $claudeExisting = [ordered]@{}
+    $skipClaudeMerge = $false
+    if (Test-Path $claudeSettingsPath) {
+        try {
+            $raw = Get-Content -Raw -Path $claudeSettingsPath
+            if ($raw -and $raw.Trim()) {
+                $obj = $raw | ConvertFrom-Json -ErrorAction Stop
+                foreach ($p in $obj.PSObject.Properties) {
+                    $claudeExisting[$p.Name] = $p.Value
+                }
+            }
+        } catch {
+            Write-Host "WARNING: Could not parse existing $claudeSettingsPath ($($_.Exception.Message)). Leaving it untouched." -ForegroundColor Yellow
+            $skipClaudeMerge = $true
+        }
+    }
+
+    if (-not $skipClaudeMerge) {
+        $claudeExisting['model'] = $workspaceModelFamily
+        ($claudeExisting | ConvertTo-Json -Depth 8) | Set-Content -Path $claudeSettingsPath -Encoding utf8
+        Write-Host "Wrote Claude Code workspace settings: $claudeSettingsPath (model=$workspaceModelFamily)"
+    }
+}
+
+# ---------------------------------------------------------------------------
 # 3. Detect / optionally install the Claude Code CLI.
 # ---------------------------------------------------------------------------
 $claude = Get-Command claude -ErrorAction SilentlyContinue

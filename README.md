@@ -48,7 +48,7 @@ azd env set CLAUDE_OPUS_MODEL   "claude-opus-4-6"
 azd up
 ```
 
-> **Want just one family?** Set only that one (e.g. just `CLAUDE_OPUS_MODEL`) and leave the others unset. Want to override capacity per family? Set `CLAUDE_HAIKU_CAPACITY` / `CLAUDE_SONNET_CAPACITY` / `CLAUDE_OPUS_CAPACITY` (TPM ÷ 1000, default 50 each). See [Choosing which models to deploy](#choosing-which-models-to-deploy).
+> **Want just one family?** Set only that one (e.g. just `CLAUDE_OPUS_MODEL`) and leave the others unset. Want to override capacity per family? Set `CLAUDE_HAIKU_CAPACITY` / `CLAUDE_SONNET_CAPACITY` / `CLAUDE_OPUS_CAPACITY` (TPM ÷ 1000, default 25 each). See [Choosing which models to deploy](#choosing-which-models-to-deploy).
 
 `azd up` provisions Foundry + the Claude deployment, then a **postprovision** hook ([`scripts/configure-claude-code.ps1`](./scripts/configure-claude-code.ps1)) writes a `claude-code.env.ps1` / `claude-code.env.sh` activator at the repo root and a `.vscode/settings.json` for the Claude Code VS Code extension. See [Claude Code post-deploy setup](#claude-code-post-deploy-setup) for details.
 
@@ -128,7 +128,7 @@ Run [`./Get-ClaudeRegions.ps1`](./Get-ClaudeRegions.ps1) to see the live catalog
 
 ## Claude Code post-deploy setup
 
-After `azd up` succeeds, the **postprovision** hook ([`scripts/configure-claude-code.ps1`](./scripts/configure-claude-code.ps1), with [`configure-claude-code.sh`](./scripts/configure-claude-code.sh) as a POSIX fallback) configures [Claude Code](https://learn.microsoft.com/azure/foundry/foundry-models/how-to/configure-claude-code) for the freshly-deployed Foundry resource. It does three things:
+After `azd up` succeeds, the **postprovision** hook ([`scripts/configure-claude-code.ps1`](./scripts/configure-claude-code.ps1), with [`configure-claude-code.sh`](./scripts/configure-claude-code.sh) as a POSIX fallback) configures [Claude Code](https://learn.microsoft.com/azure/foundry/foundry-models/how-to/configure-claude-code) for the freshly-deployed Foundry resource. It does four things:
 
 1. Writes a project-scoped activator at the repo root (`claude-code.env.ps1` and `claude-code.env.sh`, both gitignored) containing the [environment variables](https://learn.microsoft.com/azure/foundry/foundry-models/how-to/configure-claude-code?tabs=bash#configure-claude-code-for-foundry) Claude Code expects:
    - `CLAUDE_CODE_USE_FOUNDRY=1`
@@ -136,7 +136,8 @@ After `azd up` succeeds, the **postprovision** hook ([`scripts/configure-claude-
    - One `ANTHROPIC_DEFAULT_<FAMILY>_MODEL=<deployment-name>` per deployed family (`HAIKU` / `SONNET` / `OPUS`). Only the families you actually deployed get a line.
    - **`AZURE_CONFIG_DIR=<repo>/.azure-cli`** &mdash; scopes `az login` (and `azd`) to this workspace only. See [Workspace-scoped `az login`](#workspace-scoped-az-login) below.
 2. Writes (or merges into) `.vscode/settings.json` with `claudeCode.environmentVariables` (the array-of-`{name,value}` schema the extension actually reads &mdash; the display name in the Settings UI is *"Claude Code: Environment Variables"*) and `claudeCode.disableLoginPrompt: true` so the [Claude Code VS Code extension](https://marketplace.visualstudio.com/items?itemName=anthropic.claude-code) skips the Anthropic-account login and uses your Foundry deployment via Entra ID. It also sets `terminal.integrated.env.{windows,linux,osx}.AZURE_CONFIG_DIR` so every terminal VS Code spawns in this workspace inherits the scoped Azure config automatically &mdash; you don't even have to source the activator first.
-3. Checks whether `claude` is on PATH. If not, prints the platform-appropriate one-liner install command. Set `CLAUDE_CODE_AUTO_INSTALL=true` *before* `azd up` to run [the official installer](https://claude.ai/install.ps1) automatically.
+3. Writes (or merges into) `.claude/settings.json` at the repo root with `{ "model": "<family>" }` pinned to a deployed family (sonnet &gt; opus &gt; haiku priority). This is the **workspace-level** Claude Code config and overrides whatever is in your user-global `~/.claude/settings.json` &mdash; so bare `claude` / `claude -p` resolves to a family you actually deployed, even if your global default points elsewhere.
+4. Checks whether `claude` is on PATH. If not, prints the platform-appropriate one-liner install command. Set `CLAUDE_CODE_AUTO_INSTALL=true` *before* `azd up` to run [the official installer](https://claude.ai/install.ps1) automatically.
 
 Authentication uses Microsoft Entra ID through your existing `az login` session &mdash; no API keys to manage. If the Foundry resource lives in a non-default tenant, run `az login --tenant <tenant-id>` first so the [token tenant matches the resource tenant](https://learn.microsoft.com/azure/foundry/foundry-models/how-to/configure-claude-code?tabs=bash#troubleshooting).
 
@@ -341,6 +342,7 @@ claude/
 | Preflight: `Quota insufficient` (exit 6) | Requested `CLAUDE_*_CAPACITY` plus existing usage exceeds the per-region quota limit. Lower the requested capacity, free up quota by deleting unused deployments, or [purge soft-deleted accounts](#free-quota-held-by-soft-deleted-accounts) that may still be holding TPM. |
 | Quota looks full but you have no live deployments (`az cognitiveservices usage list` shows `currentValue > 0`, deployment still fails with `715-123420` / `InsufficientQuota`) | **Soft-deleted Cognitive Services accounts still reserve quota for 48 h.** A previous `azd down` (or any RG / account delete) puts the AIServices account in a recoverable state that keeps holding TPM. **Fix:** list and purge them: `az cognitiveservices account list-deleted -o table` then `az cognitiveservices account purge --name <name> --location <region> --resource-group <rg>` for each. See [Free quota held by soft-deleted accounts](#free-quota-held-by-soft-deleted-accounts). |
 | `401 PermissionDenied: Principal does not have access to API/Operation` intermittently &mdash; same code passes seconds later | Data-plane RBAC propagation lag on a freshly-granted role (`Cognitive Services User` / `Foundry User` / `Azure AI Developer`). The grant can take a few minutes to land on the Foundry data plane even after `az role assignment create` returns. Wait a minute and retry; if it still fails consistently, verify the role with `az role assignment list --assignee <oid> --scope <foundry-account-id> -o table`. |
+| `claude -p` returns `The model claude-<family>-... is not available on your foundry deployment. Try --model to switch to ...` | Your user-global `~/.claude/settings.json` has `"model"` set to a family this workspace didn't deploy. The postprovision hook writes a workspace `.claude/settings.json` with `"model"` pinned to a deployed family, which overrides the global &mdash; but if you re-ran `azd up` *before* the hook update, or your global has a per-project override, the workspace pin won't apply. Either re-run `pwsh -File scripts/configure-claude-code.ps1` to regenerate `.claude/settings.json`, pick the family explicitly via `claude -p --model <sonnet\|opus\|haiku>`, or edit `~/.claude/settings.json` to remove the `"model"` line. |
 | Windows: `UnicodeEncodeError: 'charmap' codec can't encode character '\U0001f60a'` printing the model's response | The Foundry sample apps happily return emoji and other non-CP1252 characters; the default Windows console (cp1252) can't render them. Either set `$env:PYTHONIOENCODING = "utf-8"` before running, or switch the console to UTF-8 with `chcp 65001`. The Python samples already handle this gracefully, but third-party tooling may not. |
 | `check_claude_quota.py` exits with `Could not resolve a subscription id ... [WinError 2] The system cannot find the file specified` | The script falls back to `az account show` to find a subscription, but the Azure CLI isn't on `PATH` in the active shell. Either set `$env:AZURE_SUBSCRIPTION_ID = "<sub-id>"` or pass `--subscription <sub-id>` explicitly. |
 
@@ -375,7 +377,7 @@ Run it standalone any time:
 $env:CLAUDE_ORGANIZATION_NAME = "Contoso"
 $env:AZURE_LOCATION = "eastus2"
 $env:CLAUDE_MODEL_NAME = "claude-sonnet-4-6"
-$env:CLAUDE_SONNET_CAPACITY = "25"   # default 50; lower if quota is tight
+$env:CLAUDE_SONNET_CAPACITY = "25"   # default 25; lower further if quota is tight
 pwsh -File scripts/preflight-claude.ps1
 ```
 

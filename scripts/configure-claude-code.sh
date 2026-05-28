@@ -214,6 +214,62 @@ elif [ "${SKIP_VSCODE_SETTINGS:-}" != "1" ]; then
 fi
 
 # ---------------------------------------------------------------------------
+# 2b. .claude/settings.json — pin the workspace default model to a deployed
+# family. Avoids "model X is not available on your foundry deployment" when
+# the user's global ~/.claude/settings.json has `model` set to a family this
+# workspace didn't deploy.
+# Family priority: sonnet > opus > haiku.
+# ---------------------------------------------------------------------------
+WORKSPACE_MODEL=""
+for fam in "${FAMILIES[@]}"; do
+    [ "$fam" = "SONNET" ] && WORKSPACE_MODEL="sonnet" && break
+done
+if [ -z "$WORKSPACE_MODEL" ]; then
+    for fam in "${FAMILIES[@]}"; do
+        [ "$fam" = "OPUS" ] && WORKSPACE_MODEL="opus" && break
+    done
+fi
+if [ -z "$WORKSPACE_MODEL" ]; then
+    for fam in "${FAMILIES[@]}"; do
+        [ "$fam" = "HAIKU" ] && WORKSPACE_MODEL="haiku" && break
+    done
+fi
+
+if [ -n "$WORKSPACE_MODEL" ] && [ -n "$PYTHON_BIN" ]; then
+    CLAUDE_DIR="$REPO_ROOT/.claude"
+    mkdir -p "$CLAUDE_DIR"
+    CLAUDE_SETTINGS_PATH="$CLAUDE_DIR/settings.json"
+
+    CLAUDE_SETTINGS_PATH="$CLAUDE_SETTINGS_PATH" WORKSPACE_MODEL="$WORKSPACE_MODEL" \
+    "$PYTHON_BIN" - <<'PYEOF'
+import json, os, sys
+path = os.environ['CLAUDE_SETTINGS_PATH']
+data = {}
+if os.path.exists(path):
+    try:
+        with open(path, 'r', encoding='utf-8') as f:
+            text = f.read().strip()
+            if text:
+                data = json.loads(text)
+        if not isinstance(data, dict):
+            print(f"WARNING: {path} root is not an object; leaving untouched.", file=sys.stderr)
+            sys.exit(0)
+    except Exception as e:
+        print(f"WARNING: Could not parse {path} ({e}); leaving untouched.", file=sys.stderr)
+        sys.exit(0)
+
+data['model'] = os.environ['WORKSPACE_MODEL']
+
+with open(path, 'w', encoding='utf-8') as f:
+    json.dump(data, f, indent=2)
+    f.write('\n')
+print(f"Wrote Claude Code workspace settings: {path} (model={os.environ['WORKSPACE_MODEL']})")
+PYEOF
+elif [ -n "$WORKSPACE_MODEL" ]; then
+    echo "WARNING: python not found on PATH; skipping .claude/settings.json."
+fi
+
+# ---------------------------------------------------------------------------
 # 3. Detect / optionally install Claude Code CLI.
 # ---------------------------------------------------------------------------
 echo ""
