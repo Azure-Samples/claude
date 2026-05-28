@@ -18,7 +18,11 @@ The Python sample under [`src/`](./src/) works against either.
 >
 > The Terraform and Bicep in this template both send a `modelProviderData` block (`organizationName`, `countryCode`, `industry`) with each Claude deployment. The Cognitive Services RP uses that block to **auto-sign the Azure Marketplace offer for Anthropic Claude on your behalf** — no manual click-through. Before deploying, please:
 >
-> 1. Read the [Anthropic Commercial Terms of Service](https://www.anthropic.com/legal/commercial-terms) and the [Anthropic Usage Policy](https://www.anthropic.com/legal/aup) (formerly the Acceptable Use Policy). These govern your use of Claude via Microsoft Foundry, in addition to the [Microsoft Product Terms](https://www.microsoft.com/licensing/terms/) for Azure.
+> 1. Read the legal docs that govern your use of Claude via Microsoft Foundry:
+>    - [Anthropic Commercial Terms of Service](https://www.anthropic.com/legal/commercial-terms) — the master agreement for business / enterprise use (Foundry requires an Enterprise or MCA-E subscription).
+>    - [Anthropic Usage Policy](https://www.anthropic.com/legal/aup) (also called the Acceptable Use Policy / AUP) — incorporated by reference into the Commercial Terms and the doc Microsoft Foundry's own [Responsible AI guidance](https://learn.microsoft.com/azure/ai-foundry/foundry-models/how-to/use-foundry-models-claude#responsible-ai-considerations) points to.
+>    - [Anthropic Supported Regions Policy](https://aka.ms/supported_anthropic_regions) — also incorporated by reference; controls which regions are eligible.
+>    - [Microsoft Product Terms](https://www.microsoft.com/licensing/terms/) for Azure.
 > 2. **Update the three attestation fields below so they accurately describe your organization** — see the highlighted rows in [Configuration](#configuration):
 >    - `CLAUDE_ORGANIZATION_NAME` (no default — required)
 >    - `CLAUDE_COUNTRY_CODE` (default `US`)
@@ -115,7 +119,7 @@ python src/hello_claude_apikey.py
 
 ## Configuration
 
-Rows marked **Attest** below are the three `modelProviderData` fields sent to Anthropic and used by the marketplace RP to auto-sign the [Anthropic Commercial Terms](https://www.anthropic.com/legal/commercial-terms) on your behalf — see the [IMPORTANT note at the top of this README](#claude-on-microsoft-foundry--starter). Set them to match your real organization.
+Rows marked **Attest** below are the three `modelProviderData` fields sent to Anthropic and used by the marketplace RP to auto-sign the [Anthropic Commercial Terms](https://www.anthropic.com/legal/commercial-terms) (which incorporate the [Usage Policy](https://www.anthropic.com/legal/aup) and [Supported Regions Policy](https://aka.ms/supported_anthropic_regions) by reference) on your behalf — see the [IMPORTANT note at the top of this README](#claude-on-microsoft-foundry--starter). Set them to match your real organization.
 
 | Var | Required | Default | Notes |
 |---|---|---|---|
