@@ -1,6 +1,12 @@
 // ============================================================================
 // Microsoft Foundry + Claude — Bicep (azd-driven)
 // ----------------------------------------------------------------------------
+// IMPORTANT: Deploying this Bicep auto-accepts the Anthropic Marketplace
+// offer terms via the `modelProviderData` block on each deployment. Review
+// https://www.anthropic.com/legal/commercial-terms and the IMPORTANT note in
+// README.md before running `azd up`. Set `claudeOrganizationName`,
+// `claudeCountryCode`, `claudeIndustry` to match your real organization.
+// ----------------------------------------------------------------------------
 // `modelProviderData` is REQUIRED for Claude deployments. `industry`
 // MUST be lowercase to match the Foundry portal dropdown.
 // `allowProjectManagement = true` is required to create projects under the

@@ -13,6 +13,20 @@ Two equivalent IaC variants ship side-by-side. Pick one and `azd up`:
 
 The Python sample under [`src/`](./src/) works against either.
 
+> [!IMPORTANT]
+> **By running `azd up` you accept Anthropic's commercial terms for Claude.**
+>
+> The Terraform and Bicep in this template both send a `modelProviderData` block (`organizationName`, `countryCode`, `industry`) with each Claude deployment. The Cognitive Services RP uses that block to **auto-sign the Azure Marketplace offer for Anthropic Claude on your behalf** — no manual click-through. Before deploying, please:
+>
+> 1. Read the [Anthropic Commercial Terms of Service](https://www.anthropic.com/legal/commercial-terms) and the [Anthropic Usage Policy](https://www.anthropic.com/legal/aup) (formerly the Acceptable Use Policy). These govern your use of Claude via Microsoft Foundry, in addition to the [Microsoft Product Terms](https://www.microsoft.com/licensing/terms/) for Azure.
+> 2. **Update the three attestation fields below so they accurately describe your organization** — see the highlighted rows in [Configuration](#configuration):
+>    - `CLAUDE_ORGANIZATION_NAME` (no default — required)
+>    - `CLAUDE_COUNTRY_CODE` (default `US`)
+>    - `CLAUDE_INDUSTRY` (default `technology`)
+>
+>    These values are sent to Anthropic on every request and are part of your acceptance — they should match the real legal entity, country of operation, and industry that will use the model.
+> 3. Confirm your Azure subscription is [eligible to deploy Anthropic models in Foundry](https://learn.microsoft.com/azure/ai-foundry/foundry-models/how-to/use-foundry-models-claude#prerequisites).
+
 > **Looking for something more advanced?** Jump to: [Claude Code post-deploy setup](#claude-code-post-deploy-setup) · [auto-refreshing Entra ID tokens for long-running processes](#advanced-long-running-processes-auto-refreshing-the-entra-id-token) · [preprovision preflight](#preprovision-preflight-marketplace-catalog--quota) · [check Claude quota & capacity programmatically](#advanced-check-claude-quota--capacity-programmatically).
 
 ## Prerequisites
@@ -34,6 +48,12 @@ azd env new my-claude   # answer 'y' when asked "Set new environment ... as defa
                         # (if you already created the env, run `azd env select my-claude`)
 azd env set CLAUDE_ORGANIZATION_NAME "Contoso"
 azd env set AZURE_LOCATION "swedencentral"
+
+# Anthropic model-provider attestation (sent to Anthropic with every request,
+# part of accepting their commercial terms — see the IMPORTANT note above).
+# Defaults are US / technology. Override if your org is not US-based or not tech:
+# azd env set CLAUDE_COUNTRY_CODE "GB"
+# azd env set CLAUDE_INDUSTRY     "finance"
 
 # Pick which Claude families to deploy. Empty = skip that family.
 # Defaults below = all three; comment out any line to deploy a subset.
@@ -95,9 +115,13 @@ python src/hello_claude_apikey.py
 
 ## Configuration
 
+Rows marked **Attest** below are the three `modelProviderData` fields sent to Anthropic and used by the marketplace RP to auto-sign the [Anthropic Commercial Terms](https://www.anthropic.com/legal/commercial-terms) on your behalf — see the [IMPORTANT note at the top of this README](#claude-on-microsoft-foundry--starter). Set them to match your real organization.
+
 | Var | Required | Default | Notes |
 |---|---|---|---|
-| `CLAUDE_ORGANIZATION_NAME` | yes | — | Surfaced via `modelProviderData` |
+| `CLAUDE_ORGANIZATION_NAME` | **Attest** (yes) | — | **Legal entity name** sent to Anthropic via `modelProviderData`. |
+| `CLAUDE_COUNTRY_CODE` | **Attest** | `US` | 2-letter ISO. Country your organization operates from. |
+| `CLAUDE_INDUSTRY` | **Attest** | `technology` | **lowercase**: `technology`, `finance`, `healthcare`, `education`, `retail`, `manufacturing`, `government`, `media`, `other` |
 | `AZURE_LOCATION` | yes | — | `eastus2` / `swedencentral` (all 3 families) / `westus2` (sonnet + opus) |
 | `CLAUDE_HAIKU_MODEL` | no | *(empty)* | Haiku family model id (e.g. `claude-haiku-4-5`). Empty = skip. |
 | `CLAUDE_SONNET_MODEL` | no | *(empty)* | Sonnet family model id (e.g. `claude-sonnet-4-6`). Empty = skip. |
@@ -105,8 +129,6 @@ python src/hello_claude_apikey.py
 | `CLAUDE_HAIKU_CAPACITY` | no | `25` | Haiku TPM / 1000 |
 | `CLAUDE_SONNET_CAPACITY` | no | `25` | Sonnet TPM / 1000 |
 | `CLAUDE_OPUS_CAPACITY` | no | `25` | Opus TPM / 1000 |
-| `CLAUDE_COUNTRY_CODE` | no | `US` | 2-letter ISO |
-| `CLAUDE_INDUSTRY` | no | `technology` | **lowercase**: `technology`, `finance`, `healthcare`, `education`, `retail`, `manufacturing`, `government`, `media`, `other` |
 | `CLAUDE_MODEL_VERSION` | no | `1` | Applies to all deployed families. |
 | `CLAUDE_MODEL_NAME` | no | `claude-sonnet-4-6` | **Legacy.** Only used when all three `CLAUDE_*_MODEL` vars are empty (single-deployment fallback). |
 | `CLAUDE_MODEL_CAPACITY` | no | `25` | **Legacy.** Capacity for the legacy single-deployment fallback. |

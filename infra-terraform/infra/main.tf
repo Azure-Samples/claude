@@ -1,6 +1,12 @@
 # ============================================================================
 # Microsoft Foundry + Claude — Terraform (azd-driven)
 # ----------------------------------------------------------------------------
+# IMPORTANT: Applying this Terraform auto-accepts the Anthropic Marketplace
+# offer terms via the `modelProviderData` block on each deployment. Review
+# https://www.anthropic.com/legal/commercial-terms and the IMPORTANT note in
+# README.md before running `azd up`. Set `claude_organization_name`,
+# `claude_country_code`, `claude_industry` to match your real organization.
+# ----------------------------------------------------------------------------
 # - Foundry account is created via `azapi_resource` so we can set
 #   `allowProjectManagement = true` (required for child projects, not yet
 #   exposed by `azurerm_cognitive_account`).
