@@ -30,6 +30,27 @@ The Python sample under [`src/`](./src/) works against either.
 >
 >    These values are sent to Anthropic on every request and are part of your acceptance — they should match the real legal entity, country of operation, and industry that will use the model.
 > 3. Confirm your Azure subscription is [eligible to deploy Anthropic models in Foundry](https://learn.microsoft.com/azure/ai-foundry/foundry-models/how-to/use-foundry-models-claude#prerequisites).
+>
+> <details>
+> <summary>Preview the dialog Foundry would show on the manual path, and audit acceptance after <code>azd up</code></summary>
+>
+> The exact "Agree and proceed" dialog the Azure portal renders for a Claude SKU is generated live from the Marketplace offer metadata (Microsoft template + publisher-supplied links). It can change without notice, so this README does not snapshot its text — instead, open the live marketplace listing for the SKU you plan to deploy:
+>
+> - Sonnet 4.6 — <https://azuremarketplace.microsoft.com/en-us/marketplace/apps/anthropic.anthropic-claude-sonnet-4-6-offer>
+> - Opus 4.6 — <https://azuremarketplace.microsoft.com/en-us/marketplace/apps/anthropic.anthropic-claude-opus-4-6-offer>
+> - Haiku 4.5 — <https://azuremarketplace.microsoft.com/en-us/marketplace/apps/anthropic.anthropic-claude-haiku-4-5-offer>
+> - All Anthropic offers — <https://azuremarketplace.microsoft.com/en-us/marketplace/apps?search=anthropic>
+>
+> After `azd up`, you can audit the auto-signed marketplace agreement record from the CLI (returns metadata only — `accepted`, `signature`, signed-by, date, `licenseTextLink` — not the dialog text):
+>
+> ```bash
+> az term show \
+>   --publisher anthropic \
+>   --product anthropic-claude-sonnet-4-6-offer \
+>   --plan <plan-name>
+> ```
+>
+> </details>
 
 > **Looking for something more advanced?** Jump to: [Claude Code post-deploy setup](#claude-code-post-deploy-setup) · [auto-refreshing Entra ID tokens for long-running processes](#advanced-long-running-processes-auto-refreshing-the-entra-id-token) · [preprovision preflight](#preprovision-preflight-marketplace-catalog--quota) · [check Claude quota & capacity programmatically](#advanced-check-claude-quota--capacity-programmatically).
 
