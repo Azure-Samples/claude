@@ -1,0 +1,36 @@
+name: Feature request
+description: Suggest an enhancement or new capability for this sample.
+title: "[Feature] "
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: What problem would this solve?
+      description: Be concrete — what does the sample fail to do today?
+    validations:
+      required: true
+  - type: textarea
+    id: solution
+    attributes:
+      label: Proposed solution
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+    validations:
+      required: false
+  - type: dropdown
+    id: scope
+    attributes:
+      label: Where does this change land?
+      multiple: true
+      options:
+        - Bicep IaC (infra-bicep)
+        - Terraform IaC (infra-terraform)
+        - Python samples (src/)
+        - Scripts / hooks (scripts/)
+        - README / docs
+        - CI / GitHub config

@@ -1,0 +1,96 @@
+name: validate
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  bicep:
+    name: Bicep build + lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Bicep CLI
+        run: |
+          curl -Lo bicep https://github.com/Azure/bicep/releases/latest/download/bicep-linux-x64
+          chmod +x bicep
+          sudo mv bicep /usr/local/bin/bicep
+          bicep --version
+      - name: bicep build (main.bicep)
+        run: bicep build infra-bicep/infra/main.bicep --outfile /tmp/main.json
+      - name: bicep build (foundry.bicep)
+        run: bicep build infra-bicep/infra/foundry.bicep --outfile /tmp/foundry.json
+      - name: bicep lint
+        run: |
+          bicep lint infra-bicep/infra/main.bicep
+          bicep lint infra-bicep/infra/foundry.bicep
+
+  terraform:
+    name: Terraform fmt + validate
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: infra-terraform/infra
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.6.0"
+          terraform_wrapper: false
+      - name: terraform fmt -check
+        run: terraform fmt -check -recursive
+      - name: terraform init (backend=false)
+        run: terraform init -backend=false
+      - name: terraform validate
+        run: terraform validate -no-color
+
+  python:
+    name: Python compile + import check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+      - name: Install runtime deps
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+      - name: Byte-compile all sample scripts
+        run: python -m compileall -q src/
+
+  shell:
+    name: Shellcheck + PSScriptAnalyzer
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install shellcheck
+        run: sudo apt-get update && sudo apt-get install -y shellcheck
+      - name: Run shellcheck on *.sh
+        run: |
+          mapfile -d '' files < <(git ls-files -z '*.sh')
+          if [ "${#files[@]}" -eq 0 ]; then echo "No .sh files."; exit 0; fi
+          shellcheck --severity=error "${files[@]}"
+      - name: Run PSScriptAnalyzer on *.ps1
+        shell: pwsh
+        run: |
+          Install-Module -Name PSScriptAnalyzer -Force -Scope CurrentUser -SkipPublisherCheck
+          $files = Get-ChildItem -Recurse -Include *.ps1 -Path . |
+            Where-Object { $_.FullName -notmatch '[\\/]\.venv[\\/]|[\\/]\.git[\\/]|[\\/]\.terraform[\\/]' }
+          if (-not $files) { Write-Host "No .ps1 files to scan."; exit 0 }
+          $issues = $files | ForEach-Object {
+            Invoke-ScriptAnalyzer -Path $_.FullName -Severity Error `
+              -ExcludeRule PSAvoidUsingWriteHost,PSUseDeclaredVarsMoreThanAssignments
+          }
+          if ($issues) { $issues | Format-Table -AutoSize; exit 1 } else { Write-Host "No errors." }

@@ -1,0 +1,72 @@
+name: Bug report
+description: Something in this sample is not working as documented.
+title: "[Bug] "
+labels: ["bug"]
+body:
+  - type: dropdown
+    id: variant
+    attributes:
+      label: IaC variant
+      description: Which variant did you deploy?
+      options:
+        - Bicep (infra-bicep)
+        - Terraform (infra-terraform)
+        - N/A — sample script / docs issue
+    validations:
+      required: true
+  - type: input
+    id: region
+    attributes:
+      label: Azure region
+      placeholder: eastus2, swedencentral, westus2
+    validations:
+      required: true
+  - type: input
+    id: model
+    attributes:
+      label: Claude model + family
+      placeholder: claude-sonnet-4-6 / claude-haiku-4-5 / claude-opus-4-7
+    validations:
+      required: true
+  - type: textarea
+    id: tool-versions
+    attributes:
+      label: Tool versions
+      description: Run `azd version`, `az version`, `terraform version` (if applicable), `python --version`. Paste the output here.
+      render: shell
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: Steps to reproduce
+      description: Be precise — what env vars you set, the exact commands, etc.
+      placeholder: |
+        1. azd env new ...
+        2. azd env set ...
+        3. azd up
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior + logs
+      description: Paste relevant error output. **Redact subscription IDs, tenant IDs, and object IDs.**
+      render: shell
+    validations:
+      required: true
+  - type: checkboxes
+    id: confirmations
+    attributes:
+      label: Confirmations
+      options:
+        - label: I checked existing issues and didn't find a duplicate.
+          required: true
+        - label: I redacted all subscription / tenant / object IDs and any secrets from logs.
+          required: true

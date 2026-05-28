@@ -1,0 +1,11 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Security vulnerability
+    url: https://msrc.microsoft.com/create-report
+    about: Please report security issues to MSRC, NOT in public GitHub issues. See SECURITY.md.
+  - name: Microsoft Foundry / Anthropic Claude docs
+    url: https://learn.microsoft.com/azure/ai-foundry/foundry-models/how-to/use-foundry-models-claude
+    about: Official Foundry docs for Claude models — covers regions, prerequisites, RBAC, RAI.
+  - name: Anthropic Claude SDK docs
+    url: https://docs.claude.com/
+    about: Official Claude SDK docs (Python, TypeScript, etc.).

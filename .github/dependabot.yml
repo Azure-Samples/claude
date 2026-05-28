@@ -1,0 +1,37 @@
+version: 2
+updates:
+  # Python sample dependencies
+  - package-ecosystem: pip
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    labels: ["dependencies", "python"]
+    commit-message:
+      prefix: pip
+      include: scope
+
+  # GitHub Actions workflows
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    labels: ["dependencies", "github-actions"]
+    commit-message:
+      prefix: gha
+      include: scope
+
+  # Terraform providers (azapi, azurerm, random)
+  - package-ecosystem: terraform
+    directory: /infra-terraform/infra
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    labels: ["dependencies", "terraform"]
+    commit-message:
+      prefix: tf
+      include: scope

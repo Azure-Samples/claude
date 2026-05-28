@@ -27,18 +27,18 @@ locals {
 
   # Resolve effective per-family models. If no family vars are set, route the
   # legacy model_name into its matching slot for back-compat.
-  any_family_set    = var.haiku_model != "" || var.sonnet_model != "" || var.opus_model != ""
-  legacy_lower      = lower(var.model_name)
-  legacy_is_haiku   = strcontains(local.legacy_lower, "haiku")
-  legacy_is_sonnet  = strcontains(local.legacy_lower, "sonnet")
-  legacy_is_opus    = strcontains(local.legacy_lower, "opus")
+  any_family_set   = var.haiku_model != "" || var.sonnet_model != "" || var.opus_model != ""
+  legacy_lower     = lower(var.model_name)
+  legacy_is_haiku  = strcontains(local.legacy_lower, "haiku")
+  legacy_is_sonnet = strcontains(local.legacy_lower, "sonnet")
+  legacy_is_opus   = strcontains(local.legacy_lower, "opus")
 
-  effective_haiku_model    = local.any_family_set ? var.haiku_model  : (local.legacy_is_haiku  ? var.model_name : "")
-  effective_sonnet_model   = local.any_family_set ? var.sonnet_model : (local.legacy_is_sonnet ? var.model_name : "")
-  effective_opus_model     = local.any_family_set ? var.opus_model   : (local.legacy_is_opus   ? var.model_name : "")
-  effective_haiku_capacity  = local.any_family_set ? tonumber(var.haiku_capacity)  : tonumber(var.model_capacity)
+  effective_haiku_model     = local.any_family_set ? var.haiku_model : (local.legacy_is_haiku ? var.model_name : "")
+  effective_sonnet_model    = local.any_family_set ? var.sonnet_model : (local.legacy_is_sonnet ? var.model_name : "")
+  effective_opus_model      = local.any_family_set ? var.opus_model : (local.legacy_is_opus ? var.model_name : "")
+  effective_haiku_capacity  = local.any_family_set ? tonumber(var.haiku_capacity) : tonumber(var.model_capacity)
   effective_sonnet_capacity = local.any_family_set ? tonumber(var.sonnet_capacity) : tonumber(var.model_capacity)
-  effective_opus_capacity   = local.any_family_set ? tonumber(var.opus_capacity)   : tonumber(var.model_capacity)
+  effective_opus_capacity   = local.any_family_set ? tonumber(var.opus_capacity) : tonumber(var.model_capacity)
 }
 
 resource "random_string" "suffix" {
