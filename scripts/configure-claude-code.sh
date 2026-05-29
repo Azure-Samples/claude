@@ -27,20 +27,27 @@ fail() {
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="${REPO_ROOT:-$(cd "$SCRIPT_DIR/.." && pwd)}"
 
-# Skip flag from env. Prefer the CLAUDE_-namespaced name (matches the rest of
-# the env-var contract); keep the un-prefixed name as a deprecated alias.
-# Set via: azd env set CLAUDE_SKIP_VSCODE_SETTINGS 1
-SKIP_VSCODE_SETTINGS="${CLAUDE_SKIP_VSCODE_SETTINGS:-${SKIP_VSCODE_SETTINGS:-0}}"
-case "$SKIP_VSCODE_SETTINGS" in
-    1|true|TRUE|yes|YES|on|ON) SKIP_VSCODE_SETTINGS=1 ;;
-    *) SKIP_VSCODE_SETTINGS=0 ;;
+# .vscode/settings.json is opt-in. Most users of this starter call Claude from
+# the Anthropic SDK, the Claude Code CLI (uses the activator at the repo root,
+# no workspace settings needed), or another OpenAI-compatible client. Only
+# users of the Anthropic Claude Code VS Code extension benefit from having
+# claudeCode.* keys written into their workspace settings, so make them ask:
+#   azd env set CLAUDE_WRITE_VSCODE_SETTINGS 1
+# (or pass --write-vscode-settings when running the script standalone).
+WRITE_VSCODE_SETTINGS="${CLAUDE_WRITE_VSCODE_SETTINGS:-0}"
+case "$WRITE_VSCODE_SETTINGS" in
+    1|true|TRUE|yes|YES|on|ON) WRITE_VSCODE_SETTINGS=1 ;;
+    *) WRITE_VSCODE_SETTINGS=0 ;;
 esac
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
-        --repo-root)            REPO_ROOT="$2"; shift 2 ;;
-        --repo-root=*)          REPO_ROOT="${1#*=}"; shift ;;
-        --skip-vscode-settings) SKIP_VSCODE_SETTINGS=1; shift ;;
+        --repo-root)             REPO_ROOT="$2"; shift 2 ;;
+        --repo-root=*)           REPO_ROOT="${1#*=}"; shift ;;
+        --write-vscode-settings) WRITE_VSCODE_SETTINGS=1; shift ;;
+        # Deprecated no-op: skipping is now the default. Kept so existing CI
+        # / docs that still pass --skip-vscode-settings don't break.
+        --skip-vscode-settings)  shift ;;
         *) fail 2 "Unknown argument: $1" ;;
     esac
 done
@@ -161,8 +168,8 @@ for cand in python python3; do
     if command -v "$cand" >/dev/null 2>&1; then PYTHON_BIN="$cand"; break; fi
 done
 
-if [ "${SKIP_VSCODE_SETTINGS:-}" = "1" ]; then
-    echo "Skipping .vscode/settings.json (CLAUDE_SKIP_VSCODE_SETTINGS / --skip-vscode-settings set). The activator above still wires up sourced shells."
+if [ "${WRITE_VSCODE_SETTINGS:-}" != "1" ]; then
+    echo "Skipping .vscode/settings.json (opt-in). Set 'azd env set CLAUDE_WRITE_VSCODE_SETTINGS 1' before 'azd up' to wire up the Anthropic Claude Code VS Code extension automatically. The activator above already works for sourced shells."
 elif [ -n "$PYTHON_BIN" ]; then
     VSCODE_DIR="$REPO_ROOT/.vscode"
     mkdir -p "$VSCODE_DIR"
@@ -219,7 +226,7 @@ with open(path, 'w', encoding='utf-8') as f:
     f.write('\n')
 print(f"Wrote VS Code settings: {path}")
 PYEOF
-elif [ "${SKIP_VSCODE_SETTINGS:-}" != "1" ]; then
+elif [ "${WRITE_VSCODE_SETTINGS:-}" = "1" ]; then
     echo "WARNING: python not found on PATH; skipping .vscode/settings.json."
 fi
 
@@ -334,6 +341,12 @@ echo "    claude"
 echo ""
 echo "Or in VS Code: install the 'Claude Code' extension"
 echo "(https://marketplace.visualstudio.com/items?itemName=anthropic.claude-code)"
-echo "- the .vscode/settings.json in this workspace already wires it up."
+if [ "${WRITE_VSCODE_SETTINGS:-}" = "1" ]; then
+    echo "- the .vscode/settings.json in this workspace already wires it up."
+else
+    echo "- then re-run 'azd env set CLAUDE_WRITE_VSCODE_SETTINGS 1; azd provision'"
+    echo "  (or 'bash scripts/configure-claude-code.sh --write-vscode-settings')"
+    echo "  to auto-wire the extension to this Foundry deployment."
+fi
 echo ""
 exit 0

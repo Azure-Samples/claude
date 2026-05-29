@@ -30,7 +30,7 @@ This is the **Claude on Foundry Starter Kit** ([`Azure-Samples/claude`](https://
 | `CLAUDE_MODEL_NAME` | no | `claude-sonnet-4-6` | **Legacy** single-deployment fallback (only used when all three `CLAUDE_*_MODEL` are empty) |
 | `ASSIGN_RBAC` | no | `false` | `true` grants Foundry User + Foundry Project Manager to `AZURE_PRINCIPAL_ID` |
 | `CLAUDE_CODE_AUTO_INSTALL` | no | `false` | `true` installs the Claude Code CLI in the postprovision hook |
-| `CLAUDE_SKIP_VSCODE_SETTINGS` | no | `false` | `true` skips the `.vscode/settings.json` write in the postprovision hook (use when you don't have the Claude Code VS Code extension) |
+| `CLAUDE_WRITE_VSCODE_SETTINGS` | no | `false` | `true` opts in to having the postprovision hook write `.vscode/settings.json` for the [Anthropic Claude Code VS Code extension](https://marketplace.visualstudio.com/items?itemName=anthropic.claude-code). Default skips it &mdash; the CLI / SDK don't need workspace settings. |
 
 Always set vars with `azd env set <VAR> <VALUE>` from inside the chosen variant folder.
 

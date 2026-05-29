@@ -33,18 +33,25 @@
 [CmdletBinding()]
 param(
     [string] $RepoRoot,
+    [switch] $WriteVsCodeSettings,
+    # Deprecated no-op: skipping is now the default. Kept so existing CI / docs
+    # that still pass -SkipVsCodeSettings don't break.
     [switch] $SkipVsCodeSettings
 )
 
 $ErrorActionPreference = 'Stop'
 
-# Env-var opt-out so the postprovision hook can honor it without having to
-# pass -SkipVsCodeSettings on the command line:
-#   azd env set CLAUDE_SKIP_VSCODE_SETTINGS 1
-if (-not $SkipVsCodeSettings) {
-    $skipEnv = $env:CLAUDE_SKIP_VSCODE_SETTINGS
-    if ($skipEnv -and $skipEnv -match '^(1|true|yes|on)$') {
-        $SkipVsCodeSettings = $true
+# .vscode/settings.json is opt-in. Most users of this starter call Claude from
+# the Anthropic SDK, the Claude Code CLI (uses the activator at the repo root,
+# no workspace settings needed), or another OpenAI-compatible client. Only
+# users of the Anthropic Claude Code VS Code extension benefit from having
+# claudeCode.* keys written into their workspace settings, so make them ask:
+#   azd env set CLAUDE_WRITE_VSCODE_SETTINGS 1
+# (or pass -WriteVsCodeSettings when running the script standalone).
+if (-not $WriteVsCodeSettings) {
+    $writeEnv = $env:CLAUDE_WRITE_VSCODE_SETTINGS
+    if ($writeEnv -and $writeEnv -match '^(1|true|yes|on)$') {
+        $WriteVsCodeSettings = $true
     }
 }
 
@@ -185,10 +192,12 @@ Write-Host "Wrote activator: $ps1Path"
 Write-Host "Wrote activator: $shPath"
 
 # ---------------------------------------------------------------------------
-# 2. Write / merge `.vscode/settings.json` for the Claude Code VS Code extension.
+# 2. Optionally write / merge `.vscode/settings.json` for the Claude Code
+# VS Code extension. Opt-in via CLAUDE_WRITE_VSCODE_SETTINGS=1 (or
+# -WriteVsCodeSettings) since most users don't run that extension.
 # ---------------------------------------------------------------------------
-if ($SkipVsCodeSettings) {
-    Write-Host "Skipping .vscode/settings.json (CLAUDE_SKIP_VSCODE_SETTINGS / -SkipVsCodeSettings set). The activator above still wires up sourced shells."
+if (-not $WriteVsCodeSettings) {
+    Write-Host "Skipping .vscode/settings.json (opt-in). Set 'azd env set CLAUDE_WRITE_VSCODE_SETTINGS 1' before 'azd up' to wire up the Anthropic Claude Code VS Code extension automatically. The activator above already works for sourced shells."
 } else {
     $vscodeDir = Join-Path $RepoRoot '.vscode'
     $settingsPath = Join-Path $vscodeDir 'settings.json'
@@ -197,6 +206,7 @@ if ($SkipVsCodeSettings) {
     }
 
     $existing = [ordered]@{}
+    $parseFailed = $false
     if (Test-Path $settingsPath) {
         try {
             $raw = Get-Content -Raw -Path $settingsPath
@@ -208,11 +218,11 @@ if ($SkipVsCodeSettings) {
             }
         } catch {
             Write-Host "WARNING: Could not parse existing $settingsPath ($($_.Exception.Message)). Leaving it untouched." -ForegroundColor Yellow
-            $SkipVsCodeSettings = $true
+            $parseFailed = $true
         }
     }
 
-    if (-not $SkipVsCodeSettings) {
+    if (-not $parseFailed) {
         # Use [ordered] hashtables per entry so name appears before value in
         # the rendered JSON (PSCustomObject hashtable iteration is unordered).
         $claudeEnv = @(
@@ -372,6 +382,12 @@ Write-Host "    claude"
 Write-Host ""
 Write-Host "Or in VS Code: install the 'Claude Code' extension"
 Write-Host "(https://marketplace.visualstudio.com/items?itemName=anthropic.claude-code)"
-Write-Host "— the .vscode/settings.json in this workspace already wires it up."
+if ($WriteVsCodeSettings) {
+    Write-Host "— the .vscode/settings.json in this workspace already wires it up."
+} else {
+    Write-Host "— then re-run 'azd env set CLAUDE_WRITE_VSCODE_SETTINGS 1; azd provision'"
+    Write-Host "  (or '. .\scripts\configure-claude-code.ps1 -WriteVsCodeSettings')"
+    Write-Host "  to auto-wire the extension to this Foundry deployment."
+}
 Write-Host ""
 exit 0
