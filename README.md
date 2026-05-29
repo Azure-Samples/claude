@@ -2,7 +2,17 @@
 
 > Short link: **<https://aka.ms/claude/start>**
 
-Provision a [Microsoft Foundry](https://learn.microsoft.com/azure/ai-foundry/) account with a **Claude** model deployment, then call it with the **[Claude SDK](https://docs.claude.com/en/api/client-sdks)** using Microsoft Entra ID — end-to-end via [Azure Developer CLI (`azd`)](https://learn.microsoft.com/azure/developer/azure-developer-cli/). `azd up` also wires up **[Claude Code](https://learn.microsoft.com/azure/foundry/foundry-models/how-to/configure-claude-code)** so you can run the agentic CLI against your fresh deployment immediately.
+**The fastest way to get started with Claude on Microsoft Foundry.**
+
+Rapidly deploy a [Microsoft Foundry](https://learn.microsoft.com/azure/ai-foundry/) account with one or more **Claude** model deployments (haiku, sonnet, opus) using a single CLI command, then call it with the **[Claude SDK](https://docs.claude.com/en/api/client-sdks)** using Microsoft Entra ID — end-to-end via [Azure Developer CLI (`azd`)](https://learn.microsoft.com/azure/developer/azure-developer-cli/). `azd up` also wires up **[Claude Code](https://learn.microsoft.com/azure/foundry/foundry-models/how-to/configure-claude-code)** so you can run the agentic CLI against your fresh deployment immediately. Ships in both Bicep and Terraform.
+
+## Architecture Overview
+
+![Architecture: azd up provisions a Foundry account, project, and Claude deployments; the postprovision hook configures the local workspace so the Python SDK and Claude Code CLI both call the deployment via Entra ID.](./docs/img/architecture.png)
+
+A single `azd up` stands up your chosen Claude models (haiku, sonnet, opus) behind one Microsoft Foundry endpoint, then wires the Anthropic SDK and the Claude Code CLI to it over Entra ID — no API keys stored.
+
+## Pick a variant
 
 Two equivalent IaC variants ship side-by-side. Pick one and `azd up`:
 
@@ -166,12 +176,17 @@ Set one, two, or all three of `CLAUDE_HAIKU_MODEL` / `CLAUDE_SONNET_MODEL` / `CL
 
 | Goal | Set |
 |---|---|
-| All three families (recommended) | `CLAUDE_HAIKU_MODEL=claude-haiku-4-5`, `CLAUDE_SONNET_MODEL=claude-sonnet-4-6`, `CLAUDE_OPUS_MODEL=claude-opus-4-6` |
+| All three families (recommended) | `CLAUDE_HAIKU_MODEL=claude-haiku-4-5`, `CLAUDE_SONNET_MODEL=claude-sonnet-4-6`, `CLAUDE_OPUS_MODEL=claude-opus-4-8` |
 | Just sonnet | `CLAUDE_SONNET_MODEL=claude-sonnet-4-6` (leave the others unset) |
-| Just opus | `CLAUDE_OPUS_MODEL=claude-opus-4-7` (or `-4-6` if quota is tight) |
+| Just opus | `CLAUDE_OPUS_MODEL=claude-opus-4-8` (or an earlier `-4-x` if quota is tight) |
 | Single legacy model (back-compat) | `CLAUDE_MODEL_NAME=...` and leave all `CLAUDE_*_MODEL` vars empty |
 
-Run [`./Get-ClaudeRegions.ps1`](./Get-ClaudeRegions.ps1) to see the live catalog and pick model versions matching your region.
+Run [`./Get-ClaudeCatalog.ps1`](./Get-ClaudeCatalog.ps1) to see the live catalog and pick model versions matching your region. Examples:
+
+```powershell
+./Get-ClaudeCatalog.ps1            # compact table: model, version, regions, context, capacity, retirement date
+./Get-ClaudeCatalog.ps1 -Latest    # just the newest generation per family
+```
 
 ## Claude Code post-deploy setup
 
@@ -363,7 +378,7 @@ claude/
 │   ├── hello_claude_token_refresh.py # Long-running variant with auto-refreshing Entra token
 │   ├── chat_stream.py                # Streaming multi-turn chat loop
 │   └── check_claude_quota.py         # Inspect Claude quota + capacity via ARM (see Advanced)
-├── Get-ClaudeRegions.ps1
+├── Get-ClaudeCatalog.ps1
 ├── requirements.txt
 └── .env.sample
 ```
