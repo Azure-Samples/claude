@@ -170,6 +170,7 @@ claude                                 # interactive REPL; try /status and /mode
 | **Switch region** | `azd env new <name-region>` in the same variant folder, then redo the [DEPLOY](#deploy--running-azd-up) flow. **Don't** try to mutate `AZURE_LOCATION` on an existing env — the account is region-stamped. |
 | **Switch variants (Bicep ↔ Terraform)** | They produce equivalent infra but with different `azd` env state. Create a new env in the other folder: `cd infra-terraform && azd env new <name> && ...`. |
 | **Refresh Claude Code wiring** | `pwsh -File scripts/configure-claude-code.ps1` (or the `.sh` variant). Idempotent — runs without re-deploying. |
+| **Skip the `.vscode/settings.json` write** | `azd env set CLAUDE_SKIP_VSCODE_SETTINGS 1` (then re-run `azd provision` or the configure script). For customers who don't use the Claude Code VS Code extension and don't want workspace settings touched. The activator at the repo root still wires up sourced shells. |
 | **Convert to long-running auth** | Replace `Anthropic(auth_token=...)` with `AnthropicIdentity(azure_ad_token_provider=...)` from [`src/hello_claude_token_refresh.py`](../../src/hello_claude_token_refresh.py). |
 
 ---

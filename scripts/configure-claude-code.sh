@@ -26,7 +26,15 @@ fail() {
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="${REPO_ROOT:-$(cd "$SCRIPT_DIR/.." && pwd)}"
-SKIP_VSCODE_SETTINGS="${SKIP_VSCODE_SETTINGS:-0}"
+
+# Skip flag from env. Prefer the CLAUDE_-namespaced name (matches the rest of
+# the env-var contract); keep the un-prefixed name as a deprecated alias.
+# Set via: azd env set CLAUDE_SKIP_VSCODE_SETTINGS 1
+SKIP_VSCODE_SETTINGS="${CLAUDE_SKIP_VSCODE_SETTINGS:-${SKIP_VSCODE_SETTINGS:-0}}"
+case "$SKIP_VSCODE_SETTINGS" in
+    1|true|TRUE|yes|YES|on|ON) SKIP_VSCODE_SETTINGS=1 ;;
+    *) SKIP_VSCODE_SETTINGS=0 ;;
+esac
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -153,7 +161,9 @@ for cand in python python3; do
     if command -v "$cand" >/dev/null 2>&1; then PYTHON_BIN="$cand"; break; fi
 done
 
-if [ "${SKIP_VSCODE_SETTINGS:-}" != "1" ] && [ -n "$PYTHON_BIN" ]; then
+if [ "${SKIP_VSCODE_SETTINGS:-}" = "1" ]; then
+    echo "Skipping .vscode/settings.json (CLAUDE_SKIP_VSCODE_SETTINGS / --skip-vscode-settings set). The activator above still wires up sourced shells."
+elif [ -n "$PYTHON_BIN" ]; then
     VSCODE_DIR="$REPO_ROOT/.vscode"
     mkdir -p "$VSCODE_DIR"
     SETTINGS_PATH="$VSCODE_DIR/settings.json"

@@ -38,6 +38,16 @@ param(
 
 $ErrorActionPreference = 'Stop'
 
+# Env-var opt-out so the postprovision hook can honor it without having to
+# pass -SkipVsCodeSettings on the command line:
+#   azd env set CLAUDE_SKIP_VSCODE_SETTINGS 1
+if (-not $SkipVsCodeSettings) {
+    $skipEnv = $env:CLAUDE_SKIP_VSCODE_SETTINGS
+    if ($skipEnv -and $skipEnv -match '^(1|true|yes|on)$') {
+        $SkipVsCodeSettings = $true
+    }
+}
+
 function Fail([int]$code, [string]$message) {
     Write-Host ""
     Write-Host "ERROR: $message" -ForegroundColor Red
@@ -177,7 +187,9 @@ Write-Host "Wrote activator: $shPath"
 # ---------------------------------------------------------------------------
 # 2. Write / merge `.vscode/settings.json` for the Claude Code VS Code extension.
 # ---------------------------------------------------------------------------
-if (-not $SkipVsCodeSettings) {
+if ($SkipVsCodeSettings) {
+    Write-Host "Skipping .vscode/settings.json (CLAUDE_SKIP_VSCODE_SETTINGS / -SkipVsCodeSettings set). The activator above still wires up sourced shells."
+} else {
     $vscodeDir = Join-Path $RepoRoot '.vscode'
     $settingsPath = Join-Path $vscodeDir 'settings.json'
     if (-not (Test-Path $vscodeDir)) {
