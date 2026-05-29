@@ -235,7 +235,8 @@ Each `.ps1` has a `.sh` POSIX equivalent next to it.
 ## Reference
 
 - Long-form docs and full troubleshooting table: [README.md](../../README.md)
-- Always-on instructions for AI assistants: [`.github/copilot-instructions.md`](../copilot-instructions.md)
+- Always-on instructions for AI assistants: [`.github/copilot-instructions.md`](../../.github/copilot-instructions.md)
+- Universal agent pointer: [`AGENTS.md`](../../AGENTS.md)
 - Architecture overview: [`docs/img/architecture.png`](../../docs/img/architecture.png)
 - Microsoft Learn — [Use Claude in Microsoft Foundry](https://learn.microsoft.com/azure/ai-foundry/foundry-models/how-to/use-foundry-models-claude)
 - Microsoft Learn — [Configure Claude Code for Foundry](https://learn.microsoft.com/azure/foundry/foundry-models/how-to/configure-claude-code)

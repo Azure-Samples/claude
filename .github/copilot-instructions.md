@@ -1,6 +1,6 @@
 # Repository instructions for Copilot (and other AI assistants)
 
-> **Anyone with Copilot Chat (or another AI assistant that reads `.github/copilot-instructions.md` and `AGENTS.md`) clones this repo and instantly gets a guided experience.** Ask the assistant in plain English — *"help me deploy"*, *"my deployment failed"*, *"clean up and free quota"* — and it follows the conventions below plus the deep playbook in [`.github/skills/claude-on-foundry/SKILL.md`](./skills/claude-on-foundry/SKILL.md).
+> **Anyone with Copilot Chat (or another AI assistant that reads `.github/copilot-instructions.md` and `AGENTS.md`) clones this repo and instantly gets a guided experience.** Ask the assistant in plain English — *"help me deploy"*, *"my deployment failed"*, *"clean up and free quota"* — and it follows the conventions below plus the deep playbook in [`skills/claude-on-foundry/SKILL.md`](../skills/claude-on-foundry/SKILL.md).
 
 This is the **Claude on Foundry Starter Kit** ([`Azure-Samples/claude`](https://github.com/Azure-Samples/claude) · `aka.ms/claude/start`). It provisions a Microsoft Foundry account with Claude model deployments via `azd up`, and wires the Anthropic SDK + Claude Code CLI to it using Microsoft Entra ID (no API keys).
 
@@ -35,7 +35,7 @@ Always set vars with `azd env set <VAR> <VALUE>` from inside the chosen variant 
 
 ## How to help the user (in priority order)
 
-1. **Load the skill.** For any non-trivial Claude-on-Foundry task, read [`.github/skills/claude-on-foundry/SKILL.md`](./skills/claude-on-foundry/SKILL.md) first — it has the full DEPLOY / DIAGNOSE / MODIFY / VERIFY / TEARDOWN playbook.
+1. **Load the skill.** For any non-trivial Claude-on-Foundry task, read [`skills/claude-on-foundry/SKILL.md`](../skills/claude-on-foundry/SKILL.md) first — it has the full DEPLOY / DIAGNOSE / MODIFY / VERIFY / TEARDOWN playbook.
 2. **Diagnose, don't guess.** When a deployment fails, identify the exact error fingerprint (e.g. `715-123420`, `InsufficientQuota`, `AnthropicOrganizationCreationException`, `403 Forbidden`, `401 PermissionDenied`) and follow the matching entry in the skill's DIAGNOSE table.
 3. **Run the existing scripts.** Do not invent ad-hoc `az` commands when [`Get-ClaudeCatalog.ps1`](../Get-ClaudeCatalog.ps1), [`preflight-claude.ps1`](../scripts/preflight-claude.ps1), [`configure-claude-code.ps1`](../scripts/configure-claude-code.ps1), [`verify-claude-code.ps1`](../scripts/verify-claude-code.ps1), or [`src/check_claude_quota.py`](../src/check_claude_quota.py) already cover the case.
 4. **Confirm before destructive actions.** Always get explicit user OK before: `az cognitiveservices account purge`, `azd down`, `az role assignment delete`, deleting `.azure-cli/`, editing `~/.claude/settings.json`.
