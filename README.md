@@ -1,4 +1,4 @@
-# Claude on Microsoft Foundry — Starter
+# The Claude on Foundry Starter Kit
 
 > Short link: **<https://aka.ms/claude/start>**
 
