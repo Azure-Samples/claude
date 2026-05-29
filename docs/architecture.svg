@@ -1,6 +1,6 @@
 ﻿<?xml version="1.0" encoding="UTF-8"?>
 <svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="0 0 1440 880" font-family="'Segoe UI', -apple-system, BlinkMacSystemFont, 'Helvetica Neue', Arial, sans-serif">
-  <title>Claude on Microsoft Foundry &#8212; architecture overview</title>
+  <title>The Claude on Foundry Starter Kit &#8212; architecture overview</title>
   <desc>
     Three clients (Claude Code CLI, GitHub Copilot in VS Code, Python anthropic SDK) call into a Microsoft Entra ID
     authentication path that issues a bearer token, which is then used to call Claude model deployments hosted
@@ -73,7 +73,7 @@
   <g transform="translate(720, 58)" text-anchor="middle">
     <use href="#brandClaude" x="-350" y="-36" width="48" height="48"/>
     <text x="0" y="-2" font-size="30" font-weight="700" fill="#0A2540" letter-spacing="-0.3">
-      Claude on Microsoft Foundry
+      The Claude on Foundry Starter Kit
     </text>
     <text x="0" y="28" font-size="15" fill="#5A6B7C">
       Deploy Claude models with
