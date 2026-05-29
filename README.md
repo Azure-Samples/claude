@@ -20,6 +20,10 @@ description: Deploy Claude models in Microsoft Foundry using one CLI command wit
 
 > Short link: **<https://aka.ms/claude/start>**
 
+[![Open in GitHub Codespaces](https://github.com/codespaces/badge.svg)](https://codespaces.new/Azure-Samples/claude?quickstart=1) [![Open in Dev Containers](https://img.shields.io/static/v1?style=for-the-badge&label=Dev%20Containers&message=Open&color=blue&logo=visualstudiocode)](https://vscode.dev/redirect?url=vscode://ms-vscode-remote.remote-containers/cloneInVolume?url=https://github.com/Azure-Samples/claude)
+
+> One-click try via **GitHub Codespaces** or **VS Code Dev Containers** &mdash; `az`, `azd`, and Python 3.13 are preinstalled, so `azd up` works without touching your local machine. See [Quickstart in Codespaces](#quickstart-in-codespaces).
+
 **The fastest way to get started with Claude on Microsoft Foundry.**
 
 Rapidly deploy a [Microsoft Foundry](https://learn.microsoft.com/azure/ai-foundry/) account with one or more **Claude** model deployments (haiku, sonnet, opus) using a single CLI command, then call it with the **[Claude SDK](https://docs.claude.com/en/api/client-sdks)** using Microsoft Entra ID — end-to-end via [Azure Developer CLI (`azd`)](https://learn.microsoft.com/azure/developer/azure-developer-cli/). `azd up` also wires up **[Claude Code](https://learn.microsoft.com/azure/foundry/foundry-models/how-to/configure-claude-code)** so you can run the agentic CLI against your fresh deployment immediately. Ships in both Bicep and Terraform.
@@ -106,10 +110,12 @@ The assistant follows the playbook in [`skills/claude-on-foundry/SKILL.md`](./sk
 
 - An Azure subscription [eligible to deploy Claude in Foundry](https://learn.microsoft.com/azure/ai-foundry/foundry-models/how-to/use-foundry-models-claude#prerequisites), with `Contributor` on the target subscription/resource group (see [Required permissions](#required-permissions) for the full breakdown, including the data-plane role you need to call the model).
 - Region: `eastus2` or `swedencentral` host all three Claude families (haiku / sonnet / opus). `westus2` is sonnet + opus only.
-- Tools: [Azure CLI](https://learn.microsoft.com/cli/azure/install-azure-cli), [azd](https://learn.microsoft.com/azure/developer/azure-developer-cli/install-azd), Python ≥ 3.10, and [Terraform](https://developer.hashicorp.com/terraform/install) ≥ 1.6 (Terraform variant only).
+- Tools: [Azure CLI](https://learn.microsoft.com/cli/azure/install-azure-cli), [azd](https://learn.microsoft.com/azure/developer/azure-developer-cli/install-azd), Python &ge; 3.10, and [Terraform](https://developer.hashicorp.com/terraform/install) &ge; 1.6 (Terraform variant only). **Or just open the repo in [GitHub Codespaces](#quickstart-in-codespaces) / VS Code Dev Containers** &mdash; the included [`.devcontainer/devcontainer.json`](./.devcontainer/devcontainer.json) preinstalls `az`, `azd`, and Python 3.13 for you.
 - Run `az login` once (in addition to `azd auth login` below). The `preprovision` hook uses `az` to validate that each requested Claude SKU exists in the Anthropic-on-Foundry catalog and that you have enough TPM quota in the chosen region. If `az` isn't installed or signed in, the hook warns and skips those checks so `azd up` still works &mdash; you just lose the proactive error messages.
 
 ## Quickstart
+
+> **Want zero local install?** Skip to [Quickstart in Codespaces](#quickstart-in-codespaces).
 
 ```powershell
 git clone https://github.com/Azure-Samples/claude.git
@@ -186,6 +192,33 @@ python src/hello_claude_apikey.py
 ```
 
 </details>
+
+### Quickstart in Codespaces
+
+Zero local install. The included [`.devcontainer/devcontainer.json`](./.devcontainer/devcontainer.json) preinstalls `az`, `azd`, Python 3.13, and the Azure / Bicep / Python VS Code extensions, so you can run `azd up` directly from a browser tab.
+
+1. [![Open in GitHub Codespaces](https://github.com/codespaces/badge.svg)](https://codespaces.new/Azure-Samples/claude?quickstart=1) &mdash; or open the repo's green **Code** button on GitHub &rarr; **Codespaces** &rarr; **Create codespace on main**. The container build takes ~2 min the first time.
+2. Once the terminal is ready, sign in to Azure (use device-code so the browser flow works inside the codespace):
+
+   ```bash
+   az login --use-device-code
+   azd auth login --use-device-code
+   ```
+
+3. Pick a variant and deploy &mdash; same as the local quickstart above:
+
+   ```bash
+   cd infra-bicep   # or: cd infra-terraform
+   azd env new my-claude
+   azd env set CLAUDE_ORGANIZATION_NAME "Contoso"
+   azd env set AZURE_LOCATION "swedencentral"
+   azd env set CLAUDE_SONNET_MODEL "claude-sonnet-4-6"
+   azd up
+   ```
+
+4. After `azd up`, run the Python sample or Claude Code CLI exactly as in the local quickstart &mdash; the activator and `python` are already on `PATH`.
+
+> **Want the same setup locally without Codespaces?** Install the [Dev Containers](https://marketplace.visualstudio.com/items?itemName=ms-vscode-remote.remote-containers) VS Code extension and use *"Dev Containers: Reopen in Container"* on the cloned repo, or click the *Dev Containers* badge at the top of this README. Requires [Docker Desktop](https://www.docker.com/products/docker-desktop/) (or any OCI-compatible runtime).
 
 ## Configuration
 
