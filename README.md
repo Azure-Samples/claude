@@ -82,6 +82,8 @@ The Python sample under [`src/`](./src/) works against either.
 
 > **Looking for something more advanced?** Jump to: [Claude Code post-deploy setup](#claude-code-post-deploy-setup) · [auto-refreshing Entra ID tokens for long-running processes](#advanced-long-running-processes-auto-refreshing-the-entra-id-token) · [preprovision preflight](#preprovision-preflight-marketplace-catalog--quota) · [check Claude quota & capacity programmatically](#advanced-check-claude-quota--capacity-programmatically).
 
+> **Need help? Ask Copilot.** This repo ships a [GitHub Copilot skill](./.github/skills/claude-on-foundry/SKILL.md) and [always-on instructions](./.github/copilot-instructions.md). Open the cloned folder in VS Code with Copilot Chat (or any agent that reads `.github/copilot-instructions.md` / `AGENTS.md`) and ask in plain English — e.g. *"deploy Claude haiku to eastus2 with 50 TPM"*, *"why is `azd up` failing with `715-123420`?"*, *"free up quota from soft-deleted accounts"*, or *"tear it all down cleanly"* — and the assistant follows this repo's conventions, scripts, and error catalog instead of guessing.
+
 ## Prerequisites
 
 - An Azure subscription [eligible to deploy Claude in Foundry](https://learn.microsoft.com/azure/ai-foundry/foundry-models/how-to/use-foundry-models-claude#prerequisites), with `Contributor` on the target subscription/resource group (see [Required permissions](#required-permissions) for the full breakdown, including the data-plane role you need to call the model).
