@@ -259,7 +259,7 @@
   </g>
 
   <!-- Footer -->
-  <g transform="translate(720, 820)" text-anchor="middle">
+  <g transform="translate(720, 795)" text-anchor="middle">
     <text font-size="14" fill="#5A6B7C">
       <tspan font-weight="700" fill="#0A2540">Infrastructure as Code</tspan>
       (Bicep + Terraform parity)
