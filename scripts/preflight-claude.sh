@@ -19,11 +19,17 @@
 #      `az deployment group create` show the real `InsufficientQuota`).
 #
 # Exit codes:
-#   0  Preflight passed.
-#   1  A required env var is missing.
-#   2  Azure CLI / subscription not available.
+#   0  Preflight passed (or skipped — see warnings).
 #   4  Marketplace offer not found.
 #   6  Insufficient quota.
+#
+# The preflight is best-effort. If CLAUDE_ORGANIZATION_NAME / AZURE_LOCATION
+# aren't set, or `az` isn't installed / logged in, it warns and exits 0 so
+# `azd up` can continue (azd / Bicep will prompt for any missing parameter;
+# the RP surfaces catalog / quota errors at deploy time, just less
+# ergonomically). The marketplace-offer and quota checks remain hard fails
+# when they CAN run, because they catch the most common cause of opaque
+# deploy failures.
 
 set -euo pipefail
 
@@ -33,12 +39,17 @@ fail() {
     exit "$code"
 }
 
+warn() {
+    printf 'Preflight: %s\n' "$*" >&2
+}
+
 # --- 1. Required env vars ---------------------------------------------------
 if [ -z "${CLAUDE_ORGANIZATION_NAME:-}" ]; then
-    fail 1 "CLAUDE_ORGANIZATION_NAME is required. Run: azd env set CLAUDE_ORGANIZATION_NAME 'Your Org'"
+    warn "CLAUDE_ORGANIZATION_NAME is not set. azd will prompt for the 'claudeOrganizationName' Bicep parameter at provision time. To skip the prompt: azd env set CLAUDE_ORGANIZATION_NAME 'Your Org'"
 fi
 if [ -z "${AZURE_LOCATION:-}" ]; then
-    fail 1 "AZURE_LOCATION is required. Run: azd env set AZURE_LOCATION swedencentral"
+    warn "AZURE_LOCATION is not set. azd will prompt at provision time. Skipping marketplace + quota validation (they need a region). To skip the prompt: azd env set AZURE_LOCATION swedencentral"
+    exit 0
 fi
 
 LOCATION="$AZURE_LOCATION"
@@ -65,13 +76,18 @@ if [ "${#FAMILIES[@]}" -eq 0 ]; then
 fi
 
 # --- 2. Azure CLI / active subscription ------------------------------------
+# These checks are best-effort: if `az` is missing or the user hasn't run
+# `az login`, we skip the marketplace + quota checks and let `azd up`
+# continue. The RP will surface any errors at deploy time.
 if ! command -v az >/dev/null 2>&1; then
-    fail 2 "Azure CLI (az) not found on PATH. Install: https://learn.microsoft.com/cli/azure/install-azure-cli"
+    warn "Azure CLI (az) not found on PATH. Skipping marketplace + quota validation. Install az and run 'az login' for proactive checks: https://learn.microsoft.com/cli/azure/install-azure-cli"
+    exit 0
 fi
 
 SUB_ID="$(az account show --query id -o tsv 2>/dev/null || true)"
 if [ -z "$SUB_ID" ]; then
-    fail 2 "No active Azure subscription. Run: az login   (and 'az account set --subscription <id>' if needed)"
+    warn "Not signed in to Azure CLI. Skipping marketplace + quota validation. Run 'az login' (and 'az account set --subscription <id>' if needed) for proactive checks."
+    exit 0
 fi
 
 SUMMARY=""

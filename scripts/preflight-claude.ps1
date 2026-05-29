@@ -29,12 +29,18 @@
 
 .NOTES
     Exit codes:
-      0  Preflight passed.
-      1  A required env var is missing.
-      2  Azure CLI / subscription not available.
+      0  Preflight passed (or skipped — see warnings).
       4  Marketplace offer not found (typo in a model name, or model not
          in the Anthropic-on-Foundry catalog yet).
       6  Insufficient quota (used + requested > limit).
+
+    The preflight is best-effort. If `CLAUDE_ORGANIZATION_NAME` /
+    `AZURE_LOCATION` aren't set, or `az` isn't installed / logged in, it
+    warns and exits 0 so `azd up` can continue (azd / Bicep will prompt
+    for any missing parameter; the RP surfaces catalog / quota errors at
+    deploy time, just less ergonomically). The marketplace-offer and
+    quota checks remain hard fails when they CAN run, because they
+    catch the most common cause of opaque deploy failures.
 #>
 
 [CmdletBinding()]
@@ -49,12 +55,17 @@ function Fail([int]$code, [string]$message) {
     exit $code
 }
 
+function Warn([string]$message) {
+    Write-Host "Preflight: $message" -ForegroundColor Yellow
+}
+
 # --- 1. Required env vars ---------------------------------------------------
 if (-not $env:CLAUDE_ORGANIZATION_NAME) {
-    Fail 1 "CLAUDE_ORGANIZATION_NAME is required. Run: azd env set CLAUDE_ORGANIZATION_NAME 'Your Org'"
+    Warn "CLAUDE_ORGANIZATION_NAME is not set. azd will prompt for the 'claudeOrganizationName' Bicep parameter at provision time. To skip the prompt: azd env set CLAUDE_ORGANIZATION_NAME 'Your Org'"
 }
 if (-not $env:AZURE_LOCATION) {
-    Fail 1 "AZURE_LOCATION is required. Run: azd env set AZURE_LOCATION swedencentral"
+    Warn "AZURE_LOCATION is not set. azd will prompt at provision time. Skipping marketplace + quota validation (they need a region). To skip the prompt: azd env set AZURE_LOCATION swedencentral"
+    exit 0
 }
 
 $location = $env:AZURE_LOCATION
@@ -73,14 +84,19 @@ if ($requested.Count -eq 0) {
 }
 
 # --- 2. Azure CLI / active subscription ------------------------------------
+# These checks are best-effort: if `az` is missing or the user hasn't run
+# `az login`, we skip the marketplace + quota checks and let `azd up`
+# continue. The RP will surface any errors at deploy time.
 $az = Get-Command az -ErrorAction SilentlyContinue
 if (-not $az) {
-    Fail 2 "Azure CLI (az) not found on PATH. Install: https://learn.microsoft.com/cli/azure/install-azure-cli"
+    Warn "Azure CLI (az) not found on PATH. Skipping marketplace + quota validation. Install az and run 'az login' for proactive checks: https://learn.microsoft.com/cli/azure/install-azure-cli"
+    exit 0
 }
 
 $subId = (az account show --query id -o tsv 2>$null)
 if (-not $subId) {
-    Fail 2 "No active Azure subscription. Run: az login   (and 'az account set --subscription <id>' if needed)"
+    Warn "Not signed in to Azure CLI. Skipping marketplace + quota validation. Run 'az login' (and 'az account set --subscription <id>' if needed) for proactive checks."
+    exit 0
 }
 
 $summary = ($requested | ForEach-Object { "$($_.Family)=$($_.Model)@$($_.Capacity)" }) -join ', '
