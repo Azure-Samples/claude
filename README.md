@@ -82,7 +82,19 @@ The Python sample under [`src/`](./src/) works against either.
 
 > **Looking for something more advanced?** Jump to: [Claude Code post-deploy setup](#claude-code-post-deploy-setup) · [auto-refreshing Entra ID tokens for long-running processes](#advanced-long-running-processes-auto-refreshing-the-entra-id-token) · [preprovision preflight](#preprovision-preflight-marketplace-catalog--quota) · [check Claude quota & capacity programmatically](#advanced-check-claude-quota--capacity-programmatically).
 
-> **Need help? Ask Copilot.** This repo ships a [GitHub Copilot skill](./.github/skills/claude-on-foundry/SKILL.md) and [always-on instructions](./.github/copilot-instructions.md). Open the cloned folder in VS Code with Copilot Chat (or any agent that reads `.github/copilot-instructions.md` / `AGENTS.md`) and ask in plain English — e.g. *"deploy Claude haiku to eastus2 with 50 TPM"*, *"why is `azd up` failing with `715-123420`?"*, *"free up quota from soft-deleted accounts"*, or *"tear it all down cleanly"* — and the assistant follows this repo's conventions, scripts, and error catalog instead of guessing.
+## Need help? Ask Copilot
+
+This repo ships a **GitHub Copilot skill** so any AI assistant that reads `.github/copilot-instructions.md` or `AGENTS.md` (Copilot Chat, Claude Code, Cursor, and friends) onboards you in plain English &mdash; no need to scroll the troubleshooting table or memorize env vars.
+
+**How to use it:** clone the repo, open it in VS Code with [GitHub Copilot Chat](https://docs.github.com/copilot) (or your preferred agent), and ask in natural language. Try:
+
+- *"Deploy Claude haiku to `eastus2` with 50 TPM."*
+- *"Why is `azd up` failing with `715-123420`?"*
+- *"Free up quota held by soft-deleted accounts in `swedencentral`."*
+- *"Verify Claude Code is wired up to my Foundry deployment."*
+- *"Tear it all down cleanly."*
+
+The assistant follows the playbook in [`.github/skills/claude-on-foundry/SKILL.md`](./.github/skills/claude-on-foundry/SKILL.md) and the always-on rules in [`.github/copilot-instructions.md`](./.github/copilot-instructions.md) &mdash; using this repo's scripts, env-var contract, region matrix, and error catalog instead of guessing. It also confirms with you before any destructive action (`azd down`, `az cognitiveservices account purge`, RBAC removal).
 
 ## Prerequisites
 
