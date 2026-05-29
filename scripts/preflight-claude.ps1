@@ -32,15 +32,19 @@
       0  Preflight passed (or skipped — see warnings).
       4  Marketplace offer not found (typo in a model name, or model not
          in the Anthropic-on-Foundry catalog yet).
-      6  Insufficient quota (used + requested > limit).
+      6  Insufficient quota (Terraform variant only; on Bicep this is a
+         warning because azd's own ARM preflight already surfaces it).
 
     The preflight is best-effort. If `CLAUDE_ORGANIZATION_NAME` /
     `AZURE_LOCATION` aren't set, or `az` isn't installed / logged in, it
     warns and exits 0 so `azd up` can continue (azd / Bicep will prompt
     for any missing parameter; the RP surfaces catalog / quota errors at
-    deploy time, just less ergonomically). The marketplace-offer and
-    quota checks remain hard fails when they CAN run, because they
-    catch the most common cause of opaque deploy failures.
+    deploy time, just less ergonomically). The marketplace-offer check
+    remains a hard fail in both variants when it can run. The quota check
+    is a hard fail only on the Terraform variant because `azapi_resource`
+    swallows quota into the opaque `715-123420`; on Bicep it's a warning
+    because azd's own provisionParametersResolver prints `InsufficientQuota`
+    next and prompts to continue.
 #>
 
 [CmdletBinding()]
@@ -57,6 +61,23 @@ function Fail([int]$code, [string]$message) {
 
 function Warn([string]$message) {
     Write-Host "Preflight: $message" -ForegroundColor Yellow
+}
+
+# Detect which IaC variant the preprovision hook is running under. The hook
+# always fires from inside the variant folder (`infra-bicep/` or
+# `infra-terraform/`), so the local `azure.yaml` tells us which provider azd
+# is about to drive. This decides whether the quota check is a hard fail
+# (Terraform: `azapi_resource` bypasses ARM preflight and the RP returns the
+# opaque `400 715-123420`, so we MUST catch it here) or a warning (Bicep:
+# azd's own `provisionParametersResolver` already runs ARM preflight and
+# prints a clean `InsufficientQuota` message + prompts to continue, so a
+# hard fail here just blocks that better UX).
+$variant = 'unknown'
+$azureYaml = Join-Path (Get-Location) 'azure.yaml'
+if (Test-Path $azureYaml) {
+    $yaml = Get-Content $azureYaml -Raw
+    if ($yaml -match '(?m)^\s*provider:\s*bicep')          { $variant = 'bicep' }
+    elseif ($yaml -match '(?m)^\s*provider:\s*terraform')   { $variant = 'terraform' }
 }
 
 # --- 1. Required env vars ---------------------------------------------------
@@ -164,7 +185,7 @@ $msg
         $available = $limit - $current
         if ($available -lt $capacity) {
             $upperFamily = $family.ToUpper()
-            Fail 6 @"
+            $quotaMsg = @"
 Insufficient quota for '$modelName' (family=$family) in '$location'.
 
 Requested capacity: $capacity TPM (thousands)
@@ -185,6 +206,17 @@ opaque '400 715-123420' error because azapi bypasses ARM preflight
 validation. Bicep and 'az deployment group create' show the real
 'InsufficientQuota' message because they go through ARM preflight.
 "@
+            if ($variant -eq 'bicep') {
+                # Bicep variant: azd's own ARM preflight will print the same
+                # InsufficientQuota next and prompt to continue. Warn so the
+                # diagnostic is up front, then let azd take over.
+                Write-Host ""
+                Write-Host "Preflight WARNING: $quotaMsg" -ForegroundColor Yellow
+                Write-Host "(Continuing — azd's Bicep ARM preflight will repeat this and prompt to continue.)" -ForegroundColor Yellow
+                Write-Host ""
+                continue
+            }
+            Fail 6 $quotaMsg
         }
         Write-Host "Preflight: '$modelName' quota OK ($capacity requested, $available available of $limit in $location)." -ForegroundColor Green
     } else {

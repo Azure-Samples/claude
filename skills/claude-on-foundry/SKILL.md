@@ -92,7 +92,7 @@ azd env set CLAUDE_CODE_AUTO_INSTALL true
 azd up
 ```
 
-The `preprovision` hook runs `scripts/preflight-claude.ps1` automatically. It is **best-effort**: it warns and continues when `CLAUDE_ORGANIZATION_NAME` / `AZURE_LOCATION` aren't set (azd / Bicep will prompt) or when `az` isn't installed / logged in (the RP will surface any errors at deploy time). It still **hard-fails** on (a) a missing offer in the Anthropic catalog or (b) insufficient TPM quota when those checks can actually run &mdash; those are the cases that turn into opaque deploy failures otherwise. Never suggest bypassing it.
+The `preprovision` hook runs `scripts/preflight-claude.ps1` automatically. It is **best-effort**: it warns and continues when `CLAUDE_ORGANIZATION_NAME` / `AZURE_LOCATION` aren't set (azd / Bicep will prompt) or when `az` isn't installed / logged in (the RP will surface any errors at deploy time). It still **hard-fails** on a missing offer in the Anthropic catalog (exit 4) when that check can run — that's the case that turns into an opaque deploy failure otherwise. The quota check is a **hard fail on Terraform** (because `azapi_resource` swallows quota into the opaque `715-123420`) and a **warning on Bicep** (because azd's own ARM preflight already prints `InsufficientQuota` and prompts to continue). Never suggest bypassing the preflight.
 
 The `postprovision` hook runs `scripts/configure-claude-code.ps1` to wire up Claude Code. The customer can re-run it any time without re-deploying:
 ```powershell
