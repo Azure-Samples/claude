@@ -1,14 +1,8 @@
 {
-    "name": "Azure Search OpenAI Demo",
+    "name": "The Claude on Foundry Starter Kit",
     "image": "mcr.microsoft.com/devcontainers/python:3.13-bookworm",
     "features": {
-        "ghcr.io/devcontainers/features/node:1": {
-            // This should match the version of Node.js in Github Actions workflows
-            "version": "22",
-            "nodeGypDependencies": false
-        },
         "ghcr.io/devcontainers/features/azure-cli:1.2.5": {},
-        "ghcr.io/devcontainers/features/docker-in-docker:2": {},
         "ghcr.io/azure/azure-dev/azd:latest": {}
     },
     "customizations": {
@@ -16,19 +10,9 @@
             "extensions": [
                 "ms-azuretools.azure-dev",
                 "ms-azuretools.vscode-bicep",
-                "ms-python.python",
-                "astral-sh.ty",
-                "esbenp.prettier-vscode",
-                "DavidAnson.vscode-markdownlint"
+                "ms-python.python"
             ]
         }
     },
-    "forwardPorts": [
-        50505
-    ],
-    "postCreateCommand": "",
-    "remoteUser": "vscode",
-    "hostRequirements": {
-        "memory": "8gb"
-    }
+    "remoteUser": "vscode"
 }
