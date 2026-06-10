@@ -475,7 +475,7 @@ claude/
 | Bicep: `InsufficientQuota: This operation require N new capacity in quota Tokens Per Minute (thousands) - Claude <model>, which is bigger than the current available capacity X. The current quota usage is U and the quota limit is L.` | Same root cause as `715-123420` above, just with a clear message because Bicep goes through ARM preflight. Lower the capacity env var(s) or free up quota. |
 | Preflight: `Marketplace offer ... not found` | `CLAUDE_MODEL_NAME` is misspelled, the model isn't in the Anthropic-on-Foundry catalog yet, or Anthropic changed the plan-name convention. |
 | Preflight: `Quota insufficient` (exit 6) | Requested `CLAUDE_*_CAPACITY` plus existing usage exceeds the per-region quota limit. Lower the requested capacity, free up quota by deleting unused deployments, or [purge soft-deleted accounts](#free-quota-held-by-soft-deleted-accounts) that may still be holding TPM. |
-| Quota looks full but you have no live deployments (`az cognitiveservices usage list` shows `currentValue > 0`, deployment still fails with `715-123420` / `InsufficientQuota`) | **Soft-deleted Cognitive Services accounts still reserve quota for 48 h.** A previous `azd down` (or any RG / account delete) puts the AIServices account in a recoverable state that keeps holding TPM. **Fix:** list and purge them: `az cognitiveservices account list-deleted -o table` then `az cognitiveservices account purge --name <name> --location <region> --resource-group <rg>` for each. See [Free quota held by soft-deleted accounts](#free-quota-held-by-soft-deleted-accounts). |
+| Quota looks full but you have no live deployments (`az cognitiveservices usage list` shows `currentValue > 0`, deployment still fails with `715-123420` / `InsufficientQuota`) | Soft-deleted Cognitive Services accounts still reserve TPM quota for up to 48 h. See [Free quota held by soft-deleted accounts](#free-quota-held-by-soft-deleted-accounts) for the list + purge commands. |
 | `401 PermissionDenied: Principal does not have access to API/Operation` intermittently &mdash; same code passes seconds later | Data-plane RBAC propagation lag on a freshly-granted role (`Cognitive Services User` / `Foundry User` / `Azure AI Developer`). The grant can take a few minutes to land on the Foundry data plane even after `az role assignment create` returns. Wait a minute and retry; if it still fails consistently, verify the role with `az role assignment list --assignee <oid> --scope <foundry-account-id> -o table`. |
 | `claude -p` returns `The model claude-<family>-... is not available on your foundry deployment. Try --model to switch to ...` | Your user-global `~/.claude/settings.json` has `"model"` set to a family this workspace didn't deploy. The postprovision hook writes a workspace `.claude/settings.json` with `"model"` pinned to a deployed family, which overrides the global &mdash; but if you re-ran `azd up` *before* the hook update, or your global has a per-project override, the workspace pin won't apply. Either re-run `pwsh -File scripts/configure-claude-code.ps1` to regenerate `.claude/settings.json`, pick the family explicitly via `claude -p --model <sonnet\|opus\|haiku>`, or edit `~/.claude/settings.json` to remove the `"model"` line. |
 | Windows: `UnicodeEncodeError: 'charmap' codec can't encode character '\U0001f60a'` printing the model's response | The Foundry sample apps happily return emoji and other non-CP1252 characters; the default Windows console (cp1252) can't render them. Either set `$env:PYTHONIOENCODING = "utf-8"` before running, or switch the console to UTF-8 with `chcp 65001`. The Python samples already handle this gracefully, but third-party tooling may not. |
@@ -537,62 +537,6 @@ az term accept --publisher anthropic --product anthropic-claude-sonnet-4-6-offer
 
 </details>
 
-<details id="free-quota-held-by-soft-deleted-accounts">
-<summary><strong>Free quota held by soft-deleted Cognitive Services accounts</strong></summary>
-
-When you `azd down` (or otherwise delete) a Foundry / AIServices account, Azure does **not** immediately release the TPM quota it reserved. The account moves to a *soft-deleted* state and **continues to count against your per-model quota** for up to 48 hours, after which it is permanently purged automatically.
-
-In day-to-day testing — where you may create and destroy several Foundry accounts in the same region in quick succession — this is the most common cause of "quota looks full but I have no live deployments" failures (which surface as opaque `715-123420` from Terraform or `InsufficientQuota` from Bicep).
-
-**List soft-deleted accounts in the active subscription:**
-
-```powershell
-az cognitiveservices account list-deleted --query "[].{name:name, location:location, deletionDate:properties.deletionDate}" -o table
-```
-
-**Purge them one at a time** (the original RG name is part of the deleted-account id and must be passed verbatim — the RG itself does not have to still exist):
-
-```powershell
-az cognitiveservices account purge `
-  --name <account-name> `
-  --location <region> `
-  --resource-group <original-rg-name>
-```
-
-**Purge all of them in parallel** (faster — each purge is a slow LRO):
-
-```powershell
-$accounts = az cognitiveservices account list-deleted -o json | ConvertFrom-Json
-$jobs = foreach ($a in $accounts) {
-    $rg = ($a.id -split '/')[8]   # /subscriptions/<sub>/providers/Microsoft.CognitiveServices/locations/<loc>/resourceGroups/<rg>/deletedAccounts/<name>
-    Start-Job -ScriptBlock {
-        param($n,$l,$r)
-        az cognitiveservices account purge --name $n --location $l --resource-group $r
-    } -ArgumentList $a.name, $a.location, $rg
-}
-$jobs | Wait-Job | Receive-Job
-$jobs | Remove-Job
-```
-
-POSIX equivalent:
-
-```bash
-az cognitiveservices account list-deleted -o tsv \
-  --query "[].[name, location, id]" | while IFS=$'\t' read -r name location id; do
-    rg=$(echo "$id" | awk -F'/' '{print $9}')
-    az cognitiveservices account purge --name "$name" --location "$location" --resource-group "$rg" &
-done
-wait
-```
-
-After all purges complete, re-check quota:
-
-```powershell
-az cognitiveservices usage list -l <region> --query "[?contains(name.value,'claude-')]" -o table
-```
-
-</details>
-
 <details id="advanced-check-claude-quota--capacity-programmatically">
 <summary><strong>Advanced: check Claude quota &amp; capacity programmatically</strong></summary>
 
@@ -629,6 +573,45 @@ Notes on the output:
 - **TPM Limit values are reported in thousands** by the underlying API; the script multiplies by 1,000 so the table reads in raw tokens-per-minute.
 - The **Model Capacities API requires `modelVersion`**, not just `modelName`. The script discovers active versions automatically from `locations/{region}/models` filtered to `format=Anthropic`.
 - The `Def RPM` / `Def TPM` columns are the **public non-EA defaults** (always 0/0 because Claude is gated to Enterprise + MCA-E subscriptions); the `TPM Used` / `TPM Limit` / `RPM Limit*` / `Capacity` columns are the values your EA/MCA-E subscription is actually getting.
+
+<details id="free-quota-held-by-soft-deleted-accounts">
+<summary><strong>Free quota held by soft-deleted accounts</strong></summary>
+
+`azd down` (or any RG/account delete) moves a Foundry account to a **soft-deleted** state that **keeps holding TPM quota for up to 48 h** before automatic purge. This is the #1 cause of "quota looks full but I have no live deployments" — `715-123420` from Terraform, `InsufficientQuota` from Bicep.
+
+**Fix — list, then purge:**
+
+```powershell
+# List
+az cognitiveservices account list-deleted --query "[].{name:name, location:location, deletionDate:properties.deletionDate}" -o table
+
+# Purge one (RG name lives in the deleted-account id; the RG itself doesn't need to still exist)
+az cognitiveservices account purge --name <name> --location <region> --resource-group <original-rg>
+```
+
+Bulk-purge in parallel (purge is a slow LRO):
+
+```powershell
+$accounts = az cognitiveservices account list-deleted -o json | ConvertFrom-Json
+$jobs = foreach ($a in $accounts) {
+    $rg = ($a.id -split '/')[8]
+    Start-Job { param($n,$l,$r) az cognitiveservices account purge --name $n --location $l --resource-group $r } -ArgumentList $a.name, $a.location, $rg
+}
+$jobs | Wait-Job | Receive-Job; $jobs | Remove-Job
+```
+
+```bash
+az cognitiveservices account list-deleted -o tsv --query "[].[name, location, id]" | \
+  while IFS=$'\t' read -r n l id; do
+    az cognitiveservices account purge --name "$n" --location "$l" --resource-group "$(echo "$id" | awk -F'/' '{print $9}')" &
+  done; wait
+```
+
+Re-check: `az cognitiveservices usage list -l <region> --query "[?contains(name.value,'claude-')]" -o table`.
+
+**Caveats:** purge is **destructive and irreversible** — confirm name/region first. If you can wait, Azure purges automatically within 48 h.
+
+</details>
 
 </details>
 
