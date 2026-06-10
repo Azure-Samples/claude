@@ -7,6 +7,9 @@
 #   bash scripts/verify-claude-code.sh --skip-claude-call    # config checks only, no token cost
 #   bash scripts/verify-claude-code.sh --auto-install        # install claude CLI if missing
 #   bash scripts/verify-claude-code.sh --run-python-sample   # also run python src/hello_claude.py
+#   bash scripts/verify-claude-code.sh --wait-for-deployment # poll RP while any deployment is still Creating
+#                                                              (use after a GatewayTimeout from `azd up`)
+#   bash scripts/verify-claude-code.sh --wait-timeout 1800   # cap on --wait-for-deployment (default 1800s)
 #
 # Exit codes:
 #   0  all checks passed (warnings allowed)
@@ -17,15 +20,19 @@ repo_root=""
 auto_install=0
 skip_claude=0
 run_python=0
+wait_deployment=0
+wait_timeout=1800
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
-        --repo-root)         repo_root="$2"; shift 2 ;;
-        --auto-install)      auto_install=1; shift ;;
-        --skip-claude-call)  skip_claude=1; shift ;;
-        --run-python-sample) run_python=1; shift ;;
-        -h|--help)           sed -n '2,15p' "$0"; exit 0 ;;
-        *)                   echo "Unknown flag: $1" >&2; exit 2 ;;
+        --repo-root)            repo_root="$2"; shift 2 ;;
+        --auto-install)         auto_install=1; shift ;;
+        --skip-claude-call)     skip_claude=1; shift ;;
+        --run-python-sample)    run_python=1; shift ;;
+        --wait-for-deployment)  wait_deployment=1; shift ;;
+        --wait-timeout)         wait_timeout="$2"; shift 2 ;;
+        -h|--help)              sed -n '2,15p' "$0"; exit 0 ;;
+        *)                      echo "Unknown flag: $1" >&2; exit 2 ;;
     esac
 done
 
@@ -142,11 +149,63 @@ else
             loc=$(az cognitiveservices account list -o tsv --query "[?name=='$foundry_resource'].location | [0]" 2>/dev/null || echo '')
             if [[ -n "$rg" ]]; then
                 add_result PASS "Foundry resource reachable" "$foundry_resource (rg: $rg, location: $loc)"
+                foundry_rg="$rg"
             else
                 add_result WARN "Foundry resource reachable" "$foundry_resource not visible to current az login - wrong tenant/subscription?"
             fi
         fi
     fi
+fi
+
+# 4b. Model deployment provisioning state.
+#
+#     A `GatewayTimeout` from `Microsoft.CognitiveServices` during `azd up`
+#     is an ARM-layer poll timeout, not a deployment failure -- the RP
+#     often keeps provisioning for many more minutes. Ask the RP directly
+#     so we can confirm the actual outcome without re-running `azd up`.
+foundry_rg="${foundry_rg:-}"
+if command -v az >/dev/null 2>&1 && [[ -n "$foundry_rg" && ${#deployed_families[@]} -gt 0 ]]; then
+    poll_interval=30
+    deadline=$(( $(date +%s) + (wait_timeout > 0 ? wait_timeout : 0) ))
+    first_pass=1
+    while :; do
+        deps_json=$(az cognitiveservices account deployment list -g "$foundry_rg" -n "$foundry_resource" -o json 2>/dev/null || echo '[]')
+        still_creating=()
+        for entry in "${deployed_families[@]}"; do
+            name="${entry##*|}"
+            state=$(echo "$deps_json" | python -c "import json,sys; data=json.load(sys.stdin); m=[d for d in data if d.get('name')==sys.argv[1]]; print(m[0]['properties']['provisioningState'] if m else '<missing>')" "$name" 2>/dev/null || echo '<unknown>')
+            case "$state" in
+                Succeeded|Failed|Canceled|'<missing>'|'<unknown>') : ;;
+                *) still_creating+=("$name") ;;
+            esac
+            if [[ $first_pass -eq 1 || ${#still_creating[@]} -eq 0 || $wait_deployment -eq 0 || $(date +%s) -ge $deadline ]]; then
+                case "$state" in
+                    Succeeded)    add_result PASS "Deployment '$name'" "provisioningState=Succeeded" ;;
+                    Failed)       add_result FAIL "Deployment '$name'" "provisioningState=Failed" ;;
+                    Canceled)     add_result FAIL "Deployment '$name'" "provisioningState=Canceled" ;;
+                    '<missing>')  add_result WARN "Deployment '$name'" "not found on Foundry account - may still be creating, or activator is stale" ;;
+                    '<unknown>')  add_result WARN "Deployment '$name'" "could not parse deployment list (jq/python missing?)" ;;
+                    *)
+                        if [[ $wait_deployment -eq 1 ]]; then
+                            add_result WARN "Deployment '$name'" "still $state after waiting ${wait_timeout}s"
+                        else
+                            add_result WARN "Deployment '$name'" "provisioningState=$state; rerun with --wait-for-deployment to poll"
+                        fi
+                        ;;
+                esac
+            fi
+        done
+
+        if [[ $wait_deployment -eq 0 || ${#still_creating[@]} -eq 0 || $(date +%s) -ge $deadline ]]; then
+            break
+        fi
+        remaining=$(( deadline - $(date +%s) ))
+        printf "  ${C_DIM}... %d deployment(s) still provisioning (%s); polling again in %ds (timeout in %ds)${C_RST}\n" "${#still_creating[@]}" "$(IFS=,; echo "${still_creating[*]}")" "$poll_interval" "$remaining"
+        sleep "$poll_interval"
+        first_pass=0
+    done
+elif [[ $wait_deployment -eq 1 ]]; then
+    add_result WARN "Model deployment state" "cannot poll - az not available, Foundry resource not visible, or no families set"
 fi
 
 # 5. Claude Code CLI on PATH.

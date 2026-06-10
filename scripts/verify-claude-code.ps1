@@ -12,12 +12,19 @@
          schema the Claude Code VS Code extension reads.
       3. `az` is logged in and the current token tenant matches the tenant
          that owns the Foundry resource (a mismatch is the #1 cause of 401s).
-      4. The Claude Code CLI is on PATH. If not, the script prints the install
+      4. Each Claude model deployment on the Foundry account has reached a
+         terminal `provisioningState`. If `azd up` returned a `GatewayTimeout`
+         from `Microsoft.CognitiveServices`, that is an ARM-layer poll timeout,
+         not a deployment failure &mdash; the RP often keeps going for many
+         more minutes. Re-running this verifier (optionally with
+         `-WaitForDeployment`) is the safe way to confirm the actual outcome
+         without colliding with the in-flight long-running operation.
+      5. The Claude Code CLI is on PATH. If not, the script prints the install
          hint (or runs the official installer when `-AutoInstall` is set, the
          same gate as `CLAUDE_CODE_AUTO_INSTALL` in the postprovision hook).
-      5. (Default) A non-interactive `claude -p` round trip against each
+      6. (Default) A non-interactive `claude -p` round trip against each
          deployed family. Skips this step with `-SkipClaudeCall`.
-      6. (Opt-in) A `python src/hello_claude.py` round trip exercising the
+      7. (Opt-in) A `python src/hello_claude.py` round trip exercising the
          Anthropic SDK + Entra ID code path. Enable with `-RunPythonSample`.
 
 .PARAMETER RepoRoot
@@ -35,6 +42,18 @@
     Requires `.env.local` populated via `azd env get-values` and a venv with
     `pip install -r requirements.txt`.
 
+.PARAMETER WaitForDeployment
+    If any Claude model deployment is still in a non-terminal state (e.g.
+    `Creating`), poll the Cognitive Services RP until every deployment
+    reaches `Succeeded` / `Failed` / `Canceled` or `-WaitTimeoutSeconds`
+    elapses. Use this after a `GatewayTimeout` from `azd up` to confirm
+    whether the deployment actually finished server-side.
+
+.PARAMETER WaitTimeoutSeconds
+    Maximum seconds to wait for non-terminal deployments when
+    `-WaitForDeployment` is set. Default: 1800 (30 min). Set to 0 for a
+    single status check with no polling.
+
 .EXAMPLE
     pwsh -File scripts/verify-claude-code.ps1
     # All checks + live claude -p round trip per deployed family.
@@ -46,13 +65,20 @@
 .EXAMPLE
     pwsh -File scripts/verify-claude-code.ps1 -RunPythonSample
     # Adds a Python Entra ID round trip on top of the standard checks.
+
+.EXAMPLE
+    pwsh -File scripts/verify-claude-code.ps1 -WaitForDeployment
+    # Use this after a GatewayTimeout from `azd up` to wait for the RP to
+    # finish provisioning the model deployment(s).
 #>
 [CmdletBinding()]
 param(
     [string] $RepoRoot,
     [switch] $AutoInstall,
     [switch] $SkipClaudeCall,
-    [switch] $RunPythonSample
+    [switch] $RunPythonSample,
+    [switch] $WaitForDeployment,
+    [int] $WaitTimeoutSeconds = 1800
 )
 
 $ErrorActionPreference = 'Stop'
@@ -172,7 +198,8 @@ if (-not $azCmd) {
                     $accountsJson = & az cognitiveservices account list -o json 2>$null
                     if ($accountsJson) {
                         $accounts = $accountsJson | ConvertFrom-Json
-                        $found = $accounts | Where-Object { $_.name -eq $foundryResource } | Select-Object -First 1
+                        $script:foundryAccount = $accounts | Where-Object { $_.name -eq $foundryResource } | Select-Object -First 1
+                        $found = $script:foundryAccount
                     }
                 } catch { }
                 if ($found) {
@@ -185,6 +212,74 @@ if (-not $azCmd) {
     } catch {
         Add-Result 'az account show' 'FAIL' $_.Exception.Message
     }
+}
+
+# ---------------------------------------------------------------------------
+# 4b. Model deployment provisioning state.
+#
+#     A `GatewayTimeout` from `Microsoft.CognitiveServices` during `azd up`
+#     is an ARM-layer poll timeout, not a deployment failure -- the RP
+#     often keeps provisioning for many more minutes. This check asks the
+#     RP directly so we can confirm the actual outcome without re-running
+#     `azd up` (which can collide with the in-flight LRO).
+# ---------------------------------------------------------------------------
+if ($azCmd -and $script:foundryAccount -and $deployedFamilies.Count -gt 0) {
+    $rgName = $script:foundryAccount.resourceGroup
+    $expectedNames = @($deployedFamilies | ForEach-Object { $_.Deployment })
+    $terminalStates = @('Succeeded', 'Failed', 'Canceled')
+    $deadline = (Get-Date).AddSeconds([math]::Max(0, $WaitTimeoutSeconds))
+    $pollIntervalSec = 30
+    $firstPass = $true
+
+    while ($true) {
+        $deployments = @()
+        try {
+            $depsJson = & az cognitiveservices account deployment list -g $rgName -n $foundryResource -o json 2>$null
+            if ($depsJson) { $deployments = @($depsJson | ConvertFrom-Json) }
+        } catch { }
+
+        $statuses = @()
+        $stillCreating = @()
+        foreach ($name in $expectedNames) {
+            $d = $deployments | Where-Object { $_.name -eq $name } | Select-Object -First 1
+            if (-not $d) {
+                $statuses += [pscustomobject]@{ Name = $name; State = '<missing>' }
+                continue
+            }
+            $state = $d.properties.provisioningState
+            $statuses += [pscustomobject]@{ Name = $name; State = $state }
+            if ($state -and $terminalStates -notcontains $state) {
+                $stillCreating += $name
+            }
+        }
+
+        if ($firstPass -or $stillCreating.Count -eq 0 -or -not $WaitForDeployment -or (Get-Date) -ge $deadline) {
+            foreach ($s in $statuses) {
+                $checkName = "Deployment '$($s.Name)'"
+                switch ($s.State) {
+                    'Succeeded' { Add-Result $checkName 'PASS' 'provisioningState=Succeeded' }
+                    'Failed'    { Add-Result $checkName 'FAIL' 'provisioningState=Failed' }
+                    'Canceled'  { Add-Result $checkName 'FAIL' 'provisioningState=Canceled' }
+                    '<missing>' { Add-Result $checkName 'WARN' 'not found on Foundry account - may still be creating, or activator is stale' }
+                    default {
+                        $hint = if ($WaitForDeployment) { "still $($s.State) after waiting $WaitTimeoutSeconds s" } else { "provisioningState=$($s.State); rerun with -WaitForDeployment to poll" }
+                        Add-Result $checkName 'WARN' $hint
+                    }
+                }
+            }
+        }
+
+        if (-not $WaitForDeployment -or $stillCreating.Count -eq 0 -or (Get-Date) -ge $deadline) {
+            break
+        }
+
+        $remaining = [int]($deadline - (Get-Date)).TotalSeconds
+        Write-Host ("  ... {0} deployment(s) still provisioning ({1}); polling again in {2}s (timeout in {3}s)" -f $stillCreating.Count, ($stillCreating -join ', '), $pollIntervalSec, $remaining) -ForegroundColor DarkGray
+        Start-Sleep -Seconds $pollIntervalSec
+        $firstPass = $false
+    }
+} elseif ($WaitForDeployment) {
+    Add-Result 'Model deployment state' 'WARN' 'cannot poll - az not available, Foundry resource not visible, or no families set'
 }
 
 # ---------------------------------------------------------------------------
