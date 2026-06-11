@@ -7,51 +7,49 @@ simpler and sufficient.
 
 ## Why this exists
 
-The plain `anthropic.Anthropic` client only accepts `auth_token: str | None`,
-so a captured Entra ID token will start failing with `401 Unauthorized` after
+The plain `anthropic.Anthropic` client's `auth_token` is a static `str`, so a
+captured Entra ID token would start failing with `401 Unauthorized` after
 roughly an hour.
 
-The Anthropic SDK reads `self.auth_token` via a property on every request, so
-we subclass `Anthropic` and turn it into a property that calls the Entra
-token provider, giving free per-request token refresh.
+Anthropic SDK v0.98+ added a public `credentials=` constructor argument that
+takes an `AccessTokenProvider` callable. The SDK wraps it in a `TokenCache`
+that calls the provider lazily, caches the result until expiry, and on a 401
+invalidates the cache and retries the request once with a fresh token. That
+matches exactly what we need to bridge `azure.identity` into the Anthropic
+client without subclassing or shimming `auth_token`.
 """
 
 from __future__ import annotations
 
 import os
 import sys
-from typing import Callable
 
 from anthropic import Anthropic
-from azure.identity import DefaultAzureCredential, get_bearer_token_provider
+from anthropic.lib.credentials import AccessToken
+from azure.identity import DefaultAzureCredential
 from dotenv import load_dotenv
 
 
-class AnthropicIdentity(Anthropic):
-    """Plain Anthropic client that pulls a fresh Entra ID token per request."""
+def _entra_credentials_provider(scope: str = "https://ai.azure.com/.default"):
+    """Build an Anthropic `AccessTokenProvider` backed by `DefaultAzureCredential`.
 
-    def __init__(
-        self,
-        *,
-        azure_ad_token_provider: Callable[[], str],
-        base_url: str,
-        **kwargs,
-    ) -> None:
-        self._azure_ad_token_provider = azure_ad_token_provider
-        # `auth_token` must be non-None so the parent's auth-header builder
-        # emits the `Authorization` header. The actual token comes from our
-        # property override below.
-        super().__init__(auth_token="placeholder", base_url=base_url, **kwargs)
+    The provider is called by the SDK's `TokenCache` only when there is no
+    cached token, when the cached token has expired, or when a 401 forced an
+    invalidation. `azure.identity` itself also caches and refreshes tokens
+    internally, so this stays cheap on the hot path.
+    """
+    credential = DefaultAzureCredential()
 
-    @property
-    def auth_token(self) -> str:  # type: ignore[override]
-        return self._azure_ad_token_provider()
+    def _provider(*, force_refresh: bool = False) -> AccessToken:
+        # `force_refresh` is set by TokenCache.invalidate() after a 401.
+        # DefaultAzureCredential does not expose a force-refresh knob, but
+        # re-calling get_token() is enough: it will mint a new token if the
+        # cached one is close to expiry, which is the common 401 cause.
+        token = credential.get_token(scope)
+        # `expires_on` is unix seconds — the format Anthropic's TokenCache expects.
+        return AccessToken(token=token.token, expires_at=token.expires_on)
 
-    @auth_token.setter
-    def auth_token(self, _value: str | None) -> None:
-        # Silently ignore the parent's `self.auth_token = ...` assignment;
-        # the provider is the source of truth.
-        pass
+    return _provider
 
 
 def main() -> int:
@@ -64,12 +62,8 @@ def main() -> int:
         print("Set CLAUDE_BASE_URL and CLAUDE_DEPLOYMENT_NAME.", file=sys.stderr)
         return 1
 
-    token_provider = get_bearer_token_provider(
-        DefaultAzureCredential(), "https://ai.azure.com/.default"
-    )
-
-    client = AnthropicIdentity(
-        azure_ad_token_provider=token_provider,
+    client = Anthropic(
+        credentials=_entra_credentials_provider(),
         base_url=base_url,
     )
 
