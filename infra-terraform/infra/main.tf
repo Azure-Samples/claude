@@ -134,7 +134,16 @@ resource "azapi_resource" "claude_haiku" {
   }
 
   response_export_values = ["name"]
-  depends_on             = [azapi_resource.project]
+  # Chain role assignments first: the role-assignment PUT returns fast (~5s)
+  # but Foundry data-plane RBAC propagation can take 5+ min. Waiting on the
+  # model-deployment LRO (30s-20min) in the meantime makes the first call
+  # after `azd up` work without retries. When ASSIGN_RBAC is false, the
+  # collections are empty and depends_on is satisfied immediately.
+  depends_on = [
+    azapi_resource.project,
+    azurerm_role_assignment.foundry_user,
+    azurerm_role_assignment.foundry_project_manager,
+  ]
 }
 
 resource "azapi_resource" "claude_sonnet" {
@@ -166,7 +175,12 @@ resource "azapi_resource" "claude_sonnet" {
   }
 
   response_export_values = ["name"]
-  depends_on             = [azapi_resource.project, azapi_resource.claude_haiku]
+  depends_on = [
+    azapi_resource.project,
+    azapi_resource.claude_haiku,
+    azurerm_role_assignment.foundry_user,
+    azurerm_role_assignment.foundry_project_manager,
+  ]
 }
 
 resource "azapi_resource" "claude_opus" {
@@ -198,7 +212,12 @@ resource "azapi_resource" "claude_opus" {
   }
 
   response_export_values = ["name"]
-  depends_on             = [azapi_resource.project, azapi_resource.claude_sonnet]
+  depends_on = [
+    azapi_resource.project,
+    azapi_resource.claude_sonnet,
+    azurerm_role_assignment.foundry_user,
+    azurerm_role_assignment.foundry_project_manager,
+  ]
 }
 
 # --- Optional RBAC --------------------------------------------------------

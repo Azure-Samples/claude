@@ -68,6 +68,33 @@ resource project 'Microsoft.CognitiveServices/accounts/projects@2025-10-01-previ
   properties: {}
 }
 
+// Role assignments are declared BEFORE the model deployments so each
+// deployment can dependsOn them. The model-deployment LRO can take
+// 30s-20min depending on region and family; chaining the role grants
+// first turns that wait into free RBAC propagation time and makes the
+// first call after `azd up` succeed without the usual 5-min lag.
+// When rbacEnabled is false, both resources are `if(false)` and Bicep
+// drops the dependsOn edge automatically.
+resource foundryUserAssignment 'Microsoft.Authorization/roleAssignments@2022-04-01' = if (rbacEnabled) {
+  name: guid(account.id, principalId, foundryUserRoleId)
+  scope: account
+  properties: {
+    roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', foundryUserRoleId)
+    principalId: principalId
+    principalType: 'User'
+  }
+}
+
+resource foundryProjectManagerAssignment 'Microsoft.Authorization/roleAssignments@2022-04-01' = if (rbacEnabled) {
+  name: guid(account.id, principalId, foundryProjectManagerRoleId)
+  scope: account
+  properties: {
+    roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', foundryProjectManagerRoleId)
+    principalId: principalId
+    principalType: 'User'
+  }
+}
+
 resource haikuDeployment 'Microsoft.CognitiveServices/accounts/deployments@2025-10-01-preview' = if (!empty(haikuModel)) {
   parent: account
   name: haikuDeploymentNameVar
@@ -91,6 +118,8 @@ resource haikuDeployment 'Microsoft.CognitiveServices/accounts/deployments@2025-
   }
   dependsOn: [
     project
+    foundryUserAssignment
+    foundryProjectManagerAssignment
   ]
 }
 
@@ -116,10 +145,13 @@ resource sonnetDeployment 'Microsoft.CognitiveServices/accounts/deployments@2025
     raiPolicyName: 'Microsoft.DefaultV2'
   }
   // Foundry serializes deployments under one account; chain them to avoid
-  // 409s on concurrent create.
+  // 409s on concurrent create. Role assignments are listed too so the
+  // first inference call after `azd up` doesn't hit RBAC propagation lag.
   dependsOn: [
     project
     haikuDeployment
+    foundryUserAssignment
+    foundryProjectManagerAssignment
   ]
 }
 
@@ -147,27 +179,9 @@ resource opusDeployment 'Microsoft.CognitiveServices/accounts/deployments@2025-1
   dependsOn: [
     project
     sonnetDeployment
+    foundryUserAssignment
+    foundryProjectManagerAssignment
   ]
-}
-
-resource foundryUserAssignment 'Microsoft.Authorization/roleAssignments@2022-04-01' = if (rbacEnabled) {
-  name: guid(account.id, principalId, foundryUserRoleId)
-  scope: account
-  properties: {
-    roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', foundryUserRoleId)
-    principalId: principalId
-    principalType: 'User'
-  }
-}
-
-resource foundryProjectManagerAssignment 'Microsoft.Authorization/roleAssignments@2022-04-01' = if (rbacEnabled) {
-  name: guid(account.id, principalId, foundryProjectManagerRoleId)
-  scope: account
-  properties: {
-    roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', foundryProjectManagerRoleId)
-    principalId: principalId
-    principalType: 'User'
-  }
 }
 
 output claudeBaseUrl string = 'https://${account.name}.services.ai.azure.com/anthropic'
