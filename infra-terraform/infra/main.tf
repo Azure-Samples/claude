@@ -138,11 +138,10 @@ resource "azapi_resource" "claude_haiku" {
   # but Foundry data-plane RBAC propagation can take 5+ min. Waiting on the
   # model-deployment LRO (30s-20min) in the meantime makes the first call
   # after `azd up` work without retries. When ASSIGN_RBAC is false, the
-  # collections are empty and depends_on is satisfied immediately.
+  # collection is empty and depends_on is satisfied immediately.
   depends_on = [
     azapi_resource.project,
-    azurerm_role_assignment.foundry_user,
-    azurerm_role_assignment.foundry_project_manager,
+    azurerm_role_assignment.cognitive_services_user,
   ]
 }
 
@@ -178,8 +177,7 @@ resource "azapi_resource" "claude_sonnet" {
   depends_on = [
     azapi_resource.project,
     azapi_resource.claude_haiku,
-    azurerm_role_assignment.foundry_user,
-    azurerm_role_assignment.foundry_project_manager,
+    azurerm_role_assignment.cognitive_services_user,
   ]
 }
 
@@ -215,25 +213,20 @@ resource "azapi_resource" "claude_opus" {
   depends_on = [
     azapi_resource.project,
     azapi_resource.claude_sonnet,
-    azurerm_role_assignment.foundry_user,
-    azurerm_role_assignment.foundry_project_manager,
+    azurerm_role_assignment.cognitive_services_user,
   ]
 }
 
 # --- Optional RBAC --------------------------------------------------------
-# NOTE: Azure renamed "Azure AI User" -> "Foundry User" and
-# "Azure AI Project Manager" -> "Foundry Project Manager". The GUIDs are
-# unchanged, but azurerm matches by name, so we use the current names.
-resource "azurerm_role_assignment" "foundry_user" {
+# Least-privilege role for Foundry inference, per:
+#   https://learn.microsoft.com/azure/foundry/foundry-models/how-to/configure-entra-id#for-making-authenticated-api-calls
+# `Cognitive Services User` grants exactly the data action this template's
+# runtime needs (`Microsoft.CognitiveServices/accounts/MaaS/*`) and nothing
+# else. Broader roles (`Foundry User`, `Azure AI Developer`) also work and
+# are documented in README.md for users who deliberately want more.
+resource "azurerm_role_assignment" "cognitive_services_user" {
   count                = lower(var.assign_rbac) == "true" && var.principal_id != "" ? 1 : 0
   scope                = azapi_resource.foundry.id
-  role_definition_name = "Foundry User"
-  principal_id         = var.principal_id
-}
-
-resource "azurerm_role_assignment" "foundry_project_manager" {
-  count                = lower(var.assign_rbac) == "true" && var.principal_id != "" ? 1 : 0
-  scope                = azapi_resource.foundry.id
-  role_definition_name = "Foundry Project Manager"
+  role_definition_name = "Cognitive Services User"
   principal_id         = var.principal_id
 }

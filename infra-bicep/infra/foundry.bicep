@@ -31,12 +31,14 @@ var haikuDeploymentNameVar  = empty(haikuModel)  ? '' : '${haikuModel}-${nameSuf
 var sonnetDeploymentNameVar = empty(sonnetModel) ? '' : '${sonnetModel}-${nameSuffix}'
 var opusDeploymentNameVar   = empty(opusModel)   ? '' : '${opusModel}-${nameSuffix}'
 
-// Built-in role definition IDs.
-// NOTE: Azure renamed these roles. The GUIDs are stable.
-//   53ca6127-... : "Azure AI User" -> "Foundry User" (data-plane access)
-//   eadc314b-... : "Azure AI Project Manager" -> "Foundry Project Manager"
-var foundryUserRoleId = '53ca6127-db72-4b80-b1b0-d745d6d5456d'
-var foundryProjectManagerRoleId = 'eadc314b-1a2d-4efa-be10-5d325db5065e'
+// Built-in role definition ID for the documented least-privilege inference
+// role on a Foundry account. See:
+//   https://learn.microsoft.com/azure/foundry/foundry-models/how-to/configure-entra-id#for-making-authenticated-api-calls
+// `Cognitive Services User` grants exactly the data action this template's
+// runtime needs (`Microsoft.CognitiveServices/accounts/MaaS/*`) and nothing
+// else. The broader `Foundry User` / `Azure AI Developer` roles also work
+// and are documented in README.md for users who deliberately want more.
+var cognitiveServicesUserRoleId = 'a97b65f3-24c7-4388-baec-2e87135dc908'
 
 resource account 'Microsoft.CognitiveServices/accounts@2025-10-01-preview' = {
   name: accountName
@@ -68,28 +70,18 @@ resource project 'Microsoft.CognitiveServices/accounts/projects@2025-10-01-previ
   properties: {}
 }
 
-// Role assignments are declared BEFORE the model deployments so each
-// deployment can dependsOn them. The model-deployment LRO can take
-// 30s-20min depending on region and family; chaining the role grants
+// Role assignment is declared BEFORE the model deployments so each
+// deployment can dependsOn it. The model-deployment LRO can take
+// 30s-20min depending on region and family; chaining the role grant
 // first turns that wait into free RBAC propagation time and makes the
 // first call after `azd up` succeed without the usual 5-min lag.
-// When rbacEnabled is false, both resources are `if(false)` and Bicep
+// When rbacEnabled is false, the resource is `if(false)` and Bicep
 // drops the dependsOn edge automatically.
-resource foundryUserAssignment 'Microsoft.Authorization/roleAssignments@2022-04-01' = if (rbacEnabled) {
-  name: guid(account.id, principalId, foundryUserRoleId)
+resource cognitiveServicesUserAssignment 'Microsoft.Authorization/roleAssignments@2022-04-01' = if (rbacEnabled) {
+  name: guid(account.id, principalId, cognitiveServicesUserRoleId)
   scope: account
   properties: {
-    roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', foundryUserRoleId)
-    principalId: principalId
-    principalType: 'User'
-  }
-}
-
-resource foundryProjectManagerAssignment 'Microsoft.Authorization/roleAssignments@2022-04-01' = if (rbacEnabled) {
-  name: guid(account.id, principalId, foundryProjectManagerRoleId)
-  scope: account
-  properties: {
-    roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', foundryProjectManagerRoleId)
+    roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', cognitiveServicesUserRoleId)
     principalId: principalId
     principalType: 'User'
   }
@@ -118,8 +110,7 @@ resource haikuDeployment 'Microsoft.CognitiveServices/accounts/deployments@2025-
   }
   dependsOn: [
     project
-    foundryUserAssignment
-    foundryProjectManagerAssignment
+    cognitiveServicesUserAssignment
   ]
 }
 
@@ -145,13 +136,12 @@ resource sonnetDeployment 'Microsoft.CognitiveServices/accounts/deployments@2025
     raiPolicyName: 'Microsoft.DefaultV2'
   }
   // Foundry serializes deployments under one account; chain them to avoid
-  // 409s on concurrent create. Role assignments are listed too so the
+  // 409s on concurrent create. The role assignment is listed too so the
   // first inference call after `azd up` doesn't hit RBAC propagation lag.
   dependsOn: [
     project
     haikuDeployment
-    foundryUserAssignment
-    foundryProjectManagerAssignment
+    cognitiveServicesUserAssignment
   ]
 }
 
@@ -179,8 +169,7 @@ resource opusDeployment 'Microsoft.CognitiveServices/accounts/deployments@2025-1
   dependsOn: [
     project
     sonnetDeployment
-    foundryUserAssignment
-    foundryProjectManagerAssignment
+    cognitiveServicesUserAssignment
   ]
 }
 

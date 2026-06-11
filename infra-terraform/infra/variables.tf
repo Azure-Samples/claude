@@ -27,7 +27,7 @@ variable "principal_id" {
 }
 
 variable "assign_rbac" {
-  description = "Whether to assign Foundry User + Foundry Project Manager (formerly Azure AI User / Project Manager) to principal_id. Set to \"true\" to enable. Requires Microsoft.Authorization/roleAssignments/write on the deployer."
+  description = "Whether to assign Cognitive Services User (least-privilege inference role) to principal_id on the Foundry account. Set to \"true\" to enable. Requires Microsoft.Authorization/roleAssignments/write on the deployer."
   type        = string
   default     = "false"
 }

@@ -34,7 +34,7 @@ param location string
 @description('Object id of the deploying user/SP. Empty disables RBAC.')
 param principalId string = ''
 
-@description('Whether to assign Foundry User + Foundry Project Manager (formerly Azure AI User / Project Manager) to principalId. Set to "true" to enable.')
+@description('Whether to assign Cognitive Services User (least-privilege inference role) to principalId on the Foundry account. Set to "true" to enable.')
 param assignRbac string = 'false'
 
 @description('Short prefix for resource names.')

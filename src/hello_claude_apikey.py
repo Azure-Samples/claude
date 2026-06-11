@@ -1,8 +1,8 @@
 """Quick API-key test against the deployed Claude model.
 
-Useful when the deployer lacks the 'Foundry User' (formerly 'Azure AI User')
-data-plane role for Entra ID auth. For production, prefer the Entra ID flow
-in src/hello_claude.py.
+Useful when the deployer lacks a data-plane role on the Foundry account
+(e.g. `Cognitive Services User`) for Entra ID auth. For production, prefer
+the Entra ID flow in src/hello_claude.py.
 
 Note: this uses the plain `Anthropic` client. For API-key auth, the Foundry
 endpoint accepts the standard `x-api-key` header, so nothing Foundry-specific
