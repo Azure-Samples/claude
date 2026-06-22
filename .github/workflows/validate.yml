@@ -19,7 +19,7 @@ jobs:
     name: Bicep build + lint
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - name: Install Bicep CLI
         run: |
           curl -Lo bicep https://github.com/Azure/bicep/releases/latest/download/bicep-linux-x64
@@ -42,7 +42,7 @@ jobs:
       run:
         working-directory: infra-terraform/infra
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - uses: hashicorp/setup-terraform@v3
         with:
           terraform_version: "1.10.0"
@@ -58,7 +58,7 @@ jobs:
     name: Python compile + import check
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
@@ -74,7 +74,7 @@ jobs:
     name: Shellcheck + PSScriptAnalyzer
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - name: Install shellcheck
         run: sudo apt-get update && sudo apt-get install -y shellcheck
       - name: Run shellcheck on *.sh
