@@ -225,25 +225,30 @@ msg = client.messages.create(
 <details id="advanced-long-running-processes-auto-refreshing-the-entra-id-token">
 <summary><strong>Long-running processes: auto-refreshing the Entra ID token</strong></summary>
 
-The plain `anthropic.Anthropic` client only accepts `auth_token: str | None`, so a captured token will start failing with `401 Unauthorized` after ~1 hour.
+A captured Entra ID token starts failing with `401 Unauthorized` after ~1 hour, so services, daemons, long batch jobs, and notebooks left open need a refresh path.
 
-For services, daemons, long batch jobs, or notebooks left open, use [src/hello_claude_token_refresh.py](./src/hello_claude_token_refresh.py). It defines a tiny `AnthropicIdentity(Anthropic)` subclass that overrides the `auth_token` property to call `azure.identity.get_bearer_token_provider(...)` per request, giving free per-request token refresh:
+Anthropic SDK v0.98+ added a `credentials=` constructor parameter that takes an `AccessTokenProvider` callable. The SDK wraps it in a `TokenCache` that calls the provider lazily, caches the token until expiry, and on a 401 invalidates the cache and retries the request once with a fresh token &mdash; exactly what we want.
+
+[src/hello_claude_token_refresh.py](./src/hello_claude_token_refresh.py) wires `azure.identity.DefaultAzureCredential` into that hook:
 
 ```python
-from azure.identity import DefaultAzureCredential, get_bearer_token_provider
-# AnthropicIdentity is defined in hello_claude_token_refresh.py
-from hello_claude_token_refresh import AnthropicIdentity
+from anthropic import Anthropic
+from anthropic.lib.credentials import AccessToken
+from azure.identity import DefaultAzureCredential
 
-token_provider = get_bearer_token_provider(
-    DefaultAzureCredential(), "https://ai.azure.com/.default"
-)
-client = AnthropicIdentity(
-    azure_ad_token_provider=token_provider,
+credential = DefaultAzureCredential()
+
+def entra_token_provider(*, force_refresh: bool = False) -> AccessToken:
+    token = credential.get_token("https://ai.azure.com/.default")
+    return AccessToken(token=token.token, expires_at=token.expires_on)
+
+client = Anthropic(
+    credentials=entra_token_provider,
     base_url="https://<resource>.services.ai.azure.com/anthropic",
 )
 ```
 
-If the Anthropic SDK ever accepts a callable for `auth_token`, this shim becomes unnecessary.
+Requires `anthropic>=0.109.1` (pinned in [requirements.txt](./requirements.txt)).
 
 </details>
 
@@ -733,7 +738,7 @@ The Terraform variant uses `azapi_resource` for both the Foundry account and the
 | `Project can only be created under AIServices Kind account with allowProjectManagement set to true` | Account property missing. Both variants here set it; check you didn't downgrade the API version. |
 | `404 Not Found` on inference | Base URL must end in `/anthropic` &mdash; `https://<resource>.services.ai.azure.com/anthropic`. |
 | `401 Unauthorized` | Token scope must be `https://ai.azure.com/.default`. Re-run `az login`. |
-| `401 Unauthorized` after ~1 hour of running | The Entra ID token captured at startup has expired. The plain `Anthropic` client doesn't auto-refresh &mdash; see the [long-running token refresh shim](#advanced-long-running-processes-auto-refreshing-the-entra-id-token) for [src/hello_claude_token_refresh.py](./src/hello_claude_token_refresh.py), which uses an `AnthropicIdentity` shim to refresh per request. |
+| `401 Unauthorized` after ~1 hour of running | The Entra ID token captured at startup has expired. Pass `credentials=` to `Anthropic(...)` instead of `auth_token=` &mdash; see [long-running processes](#advanced-long-running-processes-auto-refreshing-the-entra-id-token) and [src/hello_claude_token_refresh.py](./src/hello_claude_token_refresh.py). The SDK's `TokenCache` refreshes the token on 401 and retries once. |
 | `403 Forbidden` | Missing a data-plane role on the Foundry account. Grant `Cognitive Services User`, `Foundry User` (formerly `Azure AI User`), or `Azure AI Developer` (see [Required permissions](#required-permissions)). |
 | `Region not available` | Deploy to `eastus2` or `swedencentral` (or `westus2` for opus-only). |
 | Subscription can't deploy Claude | Confirm subscription eligibility per the [official docs](https://learn.microsoft.com/azure/ai-foundry/foundry-models/how-to/use-foundry-models-claude#prerequisites). The [preprovision preflight](#preprovision-preflight-marketplace-catalog--quota) warns about this before `azd up` calls the RP. |
