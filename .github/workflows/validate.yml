@@ -55,7 +55,7 @@ jobs:
         run: terraform validate -no-color
 
   python:
-    name: Python compile + import check
+    name: Python tests + compile
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -69,6 +69,8 @@ jobs:
           pip install -r requirements.txt
       - name: Byte-compile all sample scripts
         run: python -m compileall -q src/
+      - name: Run offline SDK, catalog, and preflight regression tests
+        run: python -m unittest discover -s tests -v
 
   shell:
     name: Shellcheck + PSScriptAnalyzer

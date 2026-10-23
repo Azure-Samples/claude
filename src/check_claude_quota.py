@@ -62,12 +62,17 @@ DEFAULT_REGIONS = ["eastus2", "swedencentral"]
 # a mix of `1` and date strings like `20251001`).
 CLAUDE_MODELS = [
     "claude-mythos-preview",
+    "claude-opus-5-5",
+    "claude-opus-5-5-fast",
+    "claude-opus-4-8",
     "claude-opus-4-7",
     "claude-opus-4-6",
     "claude-opus-4-5",
     "claude-opus-4-1",
+    "claude-sonnet-5-5",
     "claude-sonnet-4-6",
     "claude-sonnet-4-5",
+    "claude-haiku-5-5",
     "claude-haiku-4-5",
 ]
 
@@ -80,17 +85,22 @@ MODEL_FORMAT = "Anthropic"
 # RPM is NOT a separate quota line for Claude in the Usages API. The Foundry
 # Claude docs publish fixed RPM:TPM ratios per model; we derive RPM from the
 # TPM limit using these ratios. Source:
-#   https://learn.microsoft.com/azure/foundry/foundry-models/how-to/use-foundry-models-claude#api-quotas-and-limits
+#   https://learn.microsoft.com/azure/foundry/foundry-models/concepts/claude-models-quotas-limits
 # Format: RPM per 1,000 TPM (i.e. multiply by the "thousands" units the API
 # returns to get RPM).
 RPM_PER_KTPM: dict[str, float] = {
-    "claude-opus-4-7": 1.0,    # 2,000 RPM / 2,000 k-TPM
+    "claude-opus-5-5": 1.0,   # 10,000 RPM / 10,000 k-ITPM
+    "claude-opus-5-5-fast": 1.0,
+    "claude-opus-4-8": 1.0,
+    "claude-opus-4-7": 1.0,
     "claude-opus-4-6": 1.0,
     "claude-opus-4-5": 1.0,
     "claude-opus-4-1": 1.0,
+    "claude-sonnet-5-5": 1.0,
     "claude-sonnet-4-6": 1.0,
-    "claude-sonnet-4-5": 2.0,  # 4,000 RPM / 2,000 k-TPM
-    "claude-haiku-4-5": 1.0,   # 4,000 RPM / 4,000 k-TPM
+    "claude-sonnet-4-5": 1.0,
+    "claude-haiku-5-5": 1.0,
+    "claude-haiku-4-5": 1.0,
     "claude-mythos-preview": 1.0,
 }
 
@@ -297,7 +307,7 @@ def _print_merged(usages: list[QuotaLine], capacities: list[CapacityLine]) -> No
     Combines:
       * Usages API   -> TPM used / TPM limit / derived RPM limit
       * Capacity API -> deployable capacity (model:version : available)
-      * Doc defaults -> public Default RPM/TPM (0/0; Claude is EA/MCA-E gated)
+      * Doc defaults -> not inferred; vary by subscription type and hosting.
 
     Outer-join: capacity may exist in regions where no quota has been
     consumed yet, and vice versa.
@@ -332,7 +342,7 @@ def _print_merged(usages: list[QuotaLine], capacities: list[CapacityLine]) -> No
             tpm_used = f"{u.current * 1000:,.0f}"
             tpm_lim = f"{u.limit * 1000:,.0f}"
             tpm_pct = f"{u.pct:.1f}%"
-            rpm_lim = f"{u.rpm_limit * 1000:,.0f}" if u.rpm_limit is not None else "-"
+            rpm_lim = f"{u.rpm_limit:,.0f}" if u.rpm_limit is not None else "-"
         else:
             tpm_used = tpm_lim = tpm_pct = rpm_lim = "-"
         sku = cap.sku if cap else "GlobalStandard"
@@ -340,7 +350,7 @@ def _print_merged(usages: list[QuotaLine], capacities: list[CapacityLine]) -> No
         version = cap.model.split(":", 1)[1] if cap and ":" in cap.model else "-"
         data.append((
             model, region, sku,
-            "0", "0",
+            "-", "-",
             tpm_used, tpm_lim, tpm_pct,
             rpm_lim, cap_avail, version,
         ))
@@ -357,7 +367,7 @@ def _print_merged(usages: list[QuotaLine], capacities: list[CapacityLine]) -> No
     print(
         "\n  * RPM Limit is DERIVED from the per-model RPM:TPM ratios published in the\n"
         "    Foundry Claude docs; it is not a separate quota line in the Usages API.\n"
-        "  Def RPM/TPM (Default) = public non-EA defaults; Claude is gated to EA/MCA-E."
+        "  Def RPM/TPM are '-' because defaults depend on subscription type and hosting."
     )
 
 
@@ -395,9 +405,9 @@ def _print_doc_style(lines: list[QuotaLine]) -> None:
     Columns: Model | Region | Deployment type | Default RPM | Default TPM |
              EA/MCA-E RPM | EA/MCA-E TPM
 
-    "Default" = the public doc default for non-EA subs (0/0, since Claude is
-    gated to Enterprise + MCA-E). "EA/MCA-E" columns are the actual values
-    pulled from this subscription's Usages API (TPM) and derived RPM.
+    "Default" is not inferred. Subscription and hosting types have different
+    defaults. Other columns show the actual values pulled from this
+    subscription's Usages API (TPM) and derived RPM.
     """
     rows = [l for l in lines if l.model]
     if not rows:
@@ -412,13 +422,13 @@ def _print_doc_style(lines: list[QuotaLine]) -> None:
     data = []
     for l in rows:
         tpm_limit = l.limit * 1000  # API reports in thousands
-        rpm_limit = l.rpm_limit * 1000 if l.rpm_limit is not None else None
+        rpm_limit = l.rpm_limit
         rpm_str = f"{rpm_limit:,.0f}" if rpm_limit is not None else "-"
         data.append((
             l.model or "",
             l.region,
             "Global Standard",
-            "0", "0",
+            "-", "-",
             rpm_str,
             f"{tpm_limit:,.0f}",
         ))

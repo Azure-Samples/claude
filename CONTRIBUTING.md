@@ -17,7 +17,7 @@ contact [opencode@microsoft.com](mailto:opencode@microsoft.com) with any additio
 1. **Open an issue first** if your change is non-trivial (anything beyond typo fixes or doc tweaks). This avoids duplicated work and gives maintainers a chance to discuss the approach.
 2. **Keep PRs focused.** One logical change per PR — easier to review, easier to revert.
 3. **Update both IaC variants when relevant.** If you change a default in `infra-bicep/`, mirror it in `infra-terraform/` (and vice versa). The README's [Parity matrix](README.md) lists the variants.
-4. **Test end-to-end on a fresh `azd env`** before pushing — `azd up --no-prompt` should succeed against a fresh subscription/resource group.
+4. **Test end-to-end on a fresh `azd env`** before pushing infrastructure changes. Run `azd up` in the chosen variant and keep its preflight hooks enabled.
 5. **No secrets in commits.** Subscription IDs, tenant IDs, object IDs, API keys, and JWTs must stay in gitignored files (`.env.local`, `.azure-cli/`, `claude-code.env.*`, `.vscode/settings.json`, `infra-*/.azure/`).
 6. **Mention the issue number** in the PR description (`Fixes #N` or `Refs #N`).
 
@@ -38,6 +38,20 @@ azd up --cwd infra-terraform
 ```
 
 See the main [README](README.md) for the full walkthrough, prerequisites, and configuration options.
+
+## Offline regression tests
+
+With dependencies installed in your virtual environment, run:
+
+```pwsh
+python -m unittest discover -s tests -v
+python -m compileall -q src tests
+pip check
+```
+
+The tests use mock HTTP transports and a fake Azure CLI; no Azure login,
+deployment, API keys, or model quota is needed. PowerShell 7 is required for
+the catalog and preflight tests. The SDK 2.x tests use its `httpx2` transport.
 
 ## Trademark notice
 

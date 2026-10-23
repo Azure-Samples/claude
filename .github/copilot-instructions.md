@@ -23,11 +23,12 @@ This is the **Claude on Foundry Starter Kit** ([`Azure-Samples/claude`](https://
 | `CLAUDE_COUNTRY_CODE` | attest | `US` | Anthropic attestation (ISO-2) |
 | `CLAUDE_INDUSTRY` | attest | `technology` | Anthropic attestation (**lowercase only**) |
 | `AZURE_LOCATION` | yes | — | `eastus2` / `swedencentral` / `westus2` (opus+sonnet only) |
-| `CLAUDE_HAIKU_MODEL` | no | empty | e.g. `claude-haiku-4-5`. Empty = skip family. |
-| `CLAUDE_SONNET_MODEL` | no | empty | e.g. `claude-sonnet-4-6`. Empty = skip family. |
-| `CLAUDE_OPUS_MODEL` | no | empty | e.g. `claude-opus-4-8`. Empty = skip family. |
+| `CLAUDE_HAIKU_MODEL` | no | empty | e.g. `claude-haiku-5-5`. Empty = skip family. |
+| `CLAUDE_SONNET_MODEL` | no | empty | e.g. `claude-sonnet-5-5`. Empty = skip family. |
+| `CLAUDE_OPUS_MODEL` | no | empty | e.g. `claude-opus-5-5`. Empty = skip family. |
 | `CLAUDE_HAIKU_CAPACITY` / `CLAUDE_SONNET_CAPACITY` / `CLAUDE_OPUS_CAPACITY` | no | `25` | TPM ÷ 1000 per family |
 | `CLAUDE_MODEL_NAME` | no | `claude-sonnet-4-6` | **Legacy** single-deployment fallback (only used when all three `CLAUDE_*_MODEL` are empty) |
+| `AZURE_TENANT_ID` | no | credential default | SDK token-request tenant; real IDs belong only in process env or gitignored `.env.local` |
 | `ASSIGN_RBAC` | no | `false` | `true` grants `Cognitive Services User` (least-privilege inference role) on the Foundry account to `AZURE_PRINCIPAL_ID` |
 | `CLAUDE_CODE_AUTO_INSTALL` | no | `false` | `true` installs the Claude Code CLI in the postprovision hook |
 | `CLAUDE_WRITE_VSCODE_SETTINGS` | no | `false` | `true` opts in to having the postprovision hook write `.vscode/settings.json` for the [Anthropic Claude Code VS Code extension](https://marketplace.visualstudio.com/items?itemName=anthropic.claude-code). Default skips it &mdash; the CLI / SDK don't need workspace settings. |
