@@ -23,6 +23,8 @@ updates:
     commit-message:
       prefix: gha
       include: scope
+    cooldown:
+      default-days: 7
 
   # Terraform providers (azapi, azurerm, random)
   - package-ecosystem: terraform

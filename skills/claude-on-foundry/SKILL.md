@@ -82,9 +82,9 @@ azd env set CLAUDE_ORGANIZATION_NAME "<legal-entity>"
 azd env set AZURE_LOCATION "eastus2"
 
 # Pick families — comment out any line to skip that family.
-azd env set CLAUDE_HAIKU_MODEL  "claude-haiku-4-5"
-azd env set CLAUDE_SONNET_MODEL "claude-sonnet-4-6"
-azd env set CLAUDE_OPUS_MODEL   "claude-opus-4-8"
+azd env set CLAUDE_HAIKU_MODEL  "claude-haiku-5-5"
+azd env set CLAUDE_SONNET_MODEL "claude-sonnet-5-5"
+azd env set CLAUDE_OPUS_MODEL   "claude-opus-5-5"
 
 # Optional: auto-install the Claude Code CLI as part of postprovision.
 azd env set CLAUDE_CODE_AUTO_INSTALL true
@@ -119,7 +119,7 @@ Match the customer's exact error string to a row. Verify the diagnostic command 
 | `GatewayTimeout: The gateway did not receive a response from 'Microsoft.CognitiveServices' within the specified time period.` &mdash; deployment stuck in `Creating` | ARM-layer poll timeout on a slow LRO, **not** a real failure. The RP keeps provisioning after ARM gives up; deployment usually reaches `Succeeded` minutes later. More likely on first-time deploys; varies by region and family. | `az cognitiveservices account deployment list -g <rg> -n <foundry-account> -o table` &mdash; check `provisioningState`. | If `Succeeded`: run `azd env refresh` and proceed. If still `Creating`: wait it out with `pwsh -File scripts/verify-claude-code.ps1 -WaitForDeployment` (POSIX: `--wait-for-deployment`), which polls until terminal state. **Do not re-run `azd up`** &mdash; it can collide with the in-flight LRO. |
 | Terraform: opaque `400 715-123420 "An error occurred. Please reach out to support for additional assistance."` | **Almost always insufficient quota.** Terraform's `azapi_resource` skips ARM preflight so the RP returns this generic code. | `az cognitiveservices usage list -l <region> --query "[?contains(name.value,'<model>')].{quota:name.value, used:currentValue, limit:limit}" -o table` | If `used + requested > limit`: lower capacity OR purge soft-deleted accounts (next row). Re-run on Bicep variant if you need a clearer error. |
 | Quota looks full but no live deployments exist | Soft-deleted Cognitive Services accounts hold quota for up to 48 h. | `az cognitiveservices account list-deleted -o table` | **Confirm with user first**, then for each: `az cognitiveservices account purge --name <n> --location <loc> --resource-group <rg>`. The original RG name is in the deleted-account id field 9. |
-| `Marketplace Subscription purchase eligibility check failed` | Subscription can't purchase the Anthropic offer (no entitlement / sandbox / paid-offer policy). | Confirm sub type (see [PLAN](#plan--before-azd-up)). | Either use a Claude-eligible sub, or pre-accept explicitly: `az term accept --publisher anthropic --product anthropic-<model>-offer --plan anthropic-<model>-plan-new`. |
+| `Marketplace Subscription purchase eligibility check failed` | Subscription can't purchase the Anthropic offer (no entitlement / sandbox / paid-offer policy). | Confirm sub type and the current Foundry model card's terms. | Use an eligible subscription. For legacy offers, pre-accept only with its actual offer/plan IDs; 5.5 does not use the legacy naming scheme. |
 | `Region not available` | Region doesn't host the requested family. | Compare `AZURE_LOCATION` to the per-region matrix in [PLAN step 2](#plan--before-azd-up). | Use `eastus2` or `swedencentral` (all three families), or `westus2` (sonnet/opus only). |
 
 ### Inference / runtime failures
@@ -128,7 +128,10 @@ Match the customer's exact error string to a row. Verify the diagnostic command 
 |---|---|---|---|
 | `404 Not Found` on first SDK call | `base_url` is missing the `/anthropic` suffix. | Print the `base_url` the script is using. | Append `/anthropic` so it's `https://<resource>.services.ai.azure.com/anthropic`. |
 | `401 Unauthorized` on first call | Token scope wrong, or no `az login`. | `az account get-access-token --resource https://ai.azure.com/.default --query expiresOn` | `az login` (add `--tenant <id>` if Foundry is in a different tenant). Scope must be `https://ai.azure.com/.default`. |
-| `401 Unauthorized` after ~1 hour of running | Captured static `auth_token` expired; the SDK does not refresh it. | Check how long the process has been alive. | Switch to [`src/hello_claude_token_refresh.py`](../../src/hello_claude_token_refresh.py) which uses `Anthropic(credentials=...)` &mdash; the SDK's `TokenCache` refreshes on 401 and retries once. Requires `anthropic>=0.109.1`. |
+| `401 Unauthorized` after ~1 hour of running | Captured static `auth_token` expired. | Check whether the client uses a static token. | Use `AnthropicFoundry(azure_ad_token_provider=...)`, as in all Entra ID samples. Azure Identity caches and refreshes before expiry. Requires `anthropic>=2.1.0`. |
+| `AttributeError: 'ThinkingBlock' object has no attribute 'text'` | Claude 5.5 returned a non-text block. | Inspect the block's `type`. | Only print `block.text` when `block.type == "text"`. |
+| `base_url and resource are mutually exclusive` | A sourced Claude Code activator set `ANTHROPIC_FOUNDRY_RESOURCE` while the SDK also received an explicit URL. | Check both settings without publishing their values. | Use the shared [`src/claude_auth.py`](../../src/claude_auth.py) client factory; it clears the resource alias only inside the Python process. |
+| SDK token uses the wrong tenant with `azd` | `DefaultAzureCredential` does not forward `AZURE_TENANT_ID` to CLI credentials automatically. | Compare the deployment tenant to the CLI login tenant without publishing either ID. | Set `AZURE_TENANT_ID` in process env or gitignored `.env.local`; the shared [`src/claude_auth.py`](../../src/claude_auth.py) provider forwards it with each token request. |
 | `401 PermissionDenied: Principal does not have access to API/Operation` — intermittently, passes seconds later | Data-plane RBAC propagation lag right after a role grant. | `az role assignment list --assignee <oid> --scope <foundry-account-id> -o table` | Wait 1-3 minutes and retry. Do NOT suggest disabling retries. |
 | `403 Forbidden` consistently | Caller has no data-plane role on the Foundry account. | Same `az role assignment list` query. | Grant `Cognitive Services User` (minimum), `Foundry User`, or `Azure AI Developer`. See the one-liner in [README → Granting data-plane roles after `azd up`](../../README.md#granting-data-plane-roles-after-azd-up). |
 | `claude -p` says: `The model claude-<family>-... is not available on your foundry deployment` | User-global `~/.claude/settings.json` pins a family this workspace didn't deploy, overriding the workspace pin. | `cat .claude/settings.json` and `cat ~/.claude/settings.json`. | Re-run `pwsh -File scripts/configure-claude-code.ps1`, OR pass `--model <sonnet\|opus\|haiku>` explicitly, OR (with user OK) edit the user-global file to remove the `"model"` line. |
@@ -172,7 +175,7 @@ claude                                 # interactive REPL; try /status and /mode
 | **Switch variants (Bicep ↔ Terraform)** | They produce equivalent infra but with different `azd` env state. Create a new env in the other folder: `cd infra-terraform && azd env new <name> && ...`. |
 | **Refresh Claude Code wiring** | `pwsh -File scripts/configure-claude-code.ps1` (or the `.sh` variant). Idempotent — runs without re-deploying. |
 | **Wire up the Claude Code VS Code extension** | `azd env set CLAUDE_WRITE_VSCODE_SETTINGS 1` (then re-run `azd provision` or the configure script). Opt-in because the activator + `.claude/settings.json` are enough for the CLI and SDK; only the [Anthropic Claude Code VS Code extension](https://marketplace.visualstudio.com/items?itemName=anthropic.claude-code) needs `claudeCode.*` keys in workspace settings. |
-| **Convert to long-running auth** | Replace `Anthropic(auth_token=token)` with `Anthropic(credentials=provider)` where `provider` is a zero-arg callable returning `anthropic.lib.credentials.AccessToken(token, expires_at)`. See [`src/hello_claude_token_refresh.py`](../../src/hello_claude_token_refresh.py). Requires `anthropic>=0.109.1`. |
+| **Convert to long-running auth** | Use `AnthropicFoundry(azure_ad_token_provider=provider)` with Azure Identity's cached bearer-token provider. See [`src/hello_claude_token_refresh.py`](../../src/hello_claude_token_refresh.py) and [`src/claude_auth.py`](../../src/claude_auth.py). Requires `anthropic>=2.1.0`; all Entra ID samples already use this pattern. |
 
 ---
 

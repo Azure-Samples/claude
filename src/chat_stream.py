@@ -1,7 +1,7 @@
 """Streaming chat loop against a Claude deployment in Microsoft Foundry.
 
-The Entra ID token is captured once at startup and is valid for ~1 hour. If
-your chat session lasts longer, see hello_claude_token_refresh.py.
+The Entra ID token provider caches tokens and refreshes them before expiry,
+including during long-running chat sessions.
 """
 
 from __future__ import annotations
@@ -9,9 +9,11 @@ from __future__ import annotations
 import os
 import sys
 
-from anthropic import Anthropic
-from azure.identity import DefaultAzureCredential
+from anthropic import AnthropicFoundry
+from anthropic.types import MessageParam
 from dotenv import load_dotenv
+
+from claude_auth import create_foundry_client
 
 
 SYSTEM_PROMPT = (
@@ -19,7 +21,7 @@ SYSTEM_PROMPT = (
 )
 
 
-def build_client() -> tuple[Anthropic, str]:
+def build_client() -> tuple[AnthropicFoundry, str]:
     load_dotenv(".env.local", override=False)
     load_dotenv(".env", override=False)
 
@@ -32,15 +34,12 @@ def build_client() -> tuple[Anthropic, str]:
         )
         sys.exit(1)
 
-    token = DefaultAzureCredential().get_token(
-        "https://ai.azure.com/.default"
-    ).token
-    return Anthropic(auth_token=token, base_url=base_url), deployment
+    return create_foundry_client(base_url), deployment
 
 
 def main() -> None:
     client, deployment = build_client()
-    history: list[dict] = []
+    history: list[MessageParam] = []
 
     print(f"Connected to {deployment}. Type 'exit' to quit.\n")
     while True:
@@ -68,6 +67,10 @@ def main() -> None:
                 assistant_text += text
                 print(text, end="", flush=True)
         print("\n")
+        if not assistant_text.strip():
+            raise RuntimeError(
+                "No text response. Increase max_tokens if the response exhausted its budget."
+            )
         history.append({"role": "assistant", "content": assistant_text})
 
 

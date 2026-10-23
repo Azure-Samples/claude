@@ -23,7 +23,7 @@
 
     Constants for all rows (printed in a footer):
       AccountKind=AIServices  AccountSku=S0  DeploymentSku=GlobalStandard
-      ModelFormat=Anthropic   Status=Preview  MaxDeploymentsPerRegion=3
+      ModelFormat=Anthropic       Lifecycle and capacity limits are read from the live catalog, not assumed.
 
     Run `az login --tenant <TENANT_ID>` and
     `az account set --subscription <SUB_ID>` before invoking.
@@ -38,7 +38,7 @@
 
 .PARAMETER Latest
     Per family, keep only the most-recent generation (e.g. drops opus-4-1
-    through opus-4-7 and keeps just opus-4-8). Alias: -LatestOnly.
+    through opus-5 and keeps opus-5-5, including its fast variant). Alias: -LatestOnly.
 
 .PARAMETER View
     Deploy (default) : developer view — exactly what to paste into azd / bicep
@@ -63,7 +63,7 @@
 
 .EXAMPLE
     ./Get-ClaudeCatalog.ps1 -Latest
-    # Just the newest generation in each family (opus-4-8, sonnet-4-6, haiku-4-5).
+    # Just the newest generation in each family (opus-5-5, sonnet-5-5, haiku-5-5).
 
 .EXAMPLE
     ./Get-ClaudeCatalog.ps1 -Family sonnet -Latest -View Matrix
@@ -170,8 +170,37 @@ if (-not $raw) {
 #   - effort parameter values supported
 #   - Actual customer-facing default RPM/TPM quotas (vs catalog per-unit baseline)
 #   - One-line tagline
-# Source: aka.ms/foundry-claude  (verified 2026-05).
+# Source: https://learn.microsoft.com/azure/foundry/foundry-models/concepts/claude-models
+# Enterprise/MCA-E quotas: concepts/claude-models-quotas-limits (2026-10).
 $ClaudeFacts = @{
+    'claude-opus-5-5' = @{
+        ContextK = 1000; MaxOutK = 128
+        Thinking = 'adaptive'
+        Effort   = 'low,medium,high,xhigh,max'
+        RPM      = 10000; TPM = 10000000
+        Tagline  = 'Long-running agents, coding, and enterprise workflows'
+    }
+    'claude-opus-5-5-fast' = @{
+        ContextK = 1000; MaxOutK = 128
+        Thinking = 'adaptive'
+        Effort   = 'low,medium,high,xhigh,max'
+        RPM      = 4000; TPM = 4000000
+        Tagline  = 'Fast variant for long-running agents and coding'
+    }
+    'claude-sonnet-5-5' = @{
+        ContextK = 1000; MaxOutK = 128
+        Thinking = 'adaptive'
+        Effort   = $null
+        RPM      = 10000; TPM = 10000000
+        Tagline  = 'Balanced model for coding and agent workflows'
+    }
+    'claude-haiku-5-5' = @{
+        ContextK = 1000; MaxOutK = 128
+        Thinking = 'adaptive'
+        Effort   = $null
+        RPM      = 10000; TPM = 10000000
+        Tagline  = 'Fast model for coding and agent workflows'
+    }
     'claude-mythos-preview' = @{
         ContextK = 1000; MaxOutK = 128
         Thinking = 'adaptive,enabled'
@@ -183,56 +212,56 @@ $ClaudeFacts = @{
         ContextK = 1000; MaxOutK = 128
         Thinking = 'adaptive,disabled'
         Effort   = 'low,medium,high,max,xhigh'
-        RPM      = 2000; TPM = 2000000
+        RPM      = 10000; TPM = 10000000
         Tagline  = 'Most intelligent Opus — best for coding & enterprise agents'
     }
     'claude-opus-4-7' = @{
         ContextK = 1000; MaxOutK = 128
         Thinking = 'adaptive,disabled'
         Effort   = 'low,medium,high,max,xhigh'
-        RPM      = 2000; TPM = 2000000
+        RPM      = 10000; TPM = 10000000
         Tagline  = 'Highly capable — coding / enterprise / long-running agents'
     }
     'claude-opus-4-6' = @{
         ContextK = 1000; MaxOutK = 128
         Thinking = 'adaptive,enabled,disabled'
         Effort   = 'low,medium,high,max'
-        RPM      = 2000; TPM = 2000000
+        RPM      = 10000; TPM = 10000000
         Tagline  = 'Very capable — agents, coding, enterprise workflows'
     }
     'claude-opus-4-5' = @{
         ContextK = 200; MaxOutK = 64
         Thinking = 'enabled,disabled'
         Effort   = 'low,medium,high'
-        RPM      = 2000; TPM = 2000000
+        RPM      = 10000; TPM = 10000000
         Tagline  = 'Industry leader: coding, agents, computer use, enterprise'
     }
     'claude-opus-4-1' = @{
         ContextK = $null; MaxOutK = $null
         Thinking = 'enabled,disabled'
         Effort   = 'low,medium,high'
-        RPM      = 2000; TPM = 2000000
+        RPM      = $null; TPM = $null
         Tagline  = 'Long-running coding tasks with thousands of steps'
     }
     'claude-sonnet-4-6' = @{
         ContextK = 1000; MaxOutK = 128
         Thinking = 'adaptive,enabled,disabled'
         Effort   = 'low,medium,high,max'
-        RPM      = 2000; TPM = 2000000
+        RPM      = 10000; TPM = 10000000
         Tagline  = 'Frontier intelligence at scale — coding / agents / office'
     }
     'claude-sonnet-4-5' = @{
         ContextK = 200; MaxOutK = $null  # 1M beta retiring 2026-04-30
         Thinking = 'enabled,disabled'
         Effort   = 'low,medium,high'
-        RPM      = 4000; TPM = 2000000
+        RPM      = 10000; TPM = 10000000
         Tagline  = 'Balanced speed/cost — real-world agents & computer use'
     }
     'claude-haiku-4-5' = @{
         ContextK = $null; MaxOutK = $null
         Thinking = 'enabled,disabled'
         Effort   = 'low,medium,high'
-        RPM      = 4000; TPM = 4000000
+        RPM      = 10000; TPM = 10000000
         Tagline  = 'Near-frontier at low cost — free products & sub-agents'
     }
 }
@@ -246,7 +275,7 @@ $enriched = foreach ($r in $raw) {
            elseif ($r.Model -match 'mythos') { 'mythos' }
            else                              { 'other' }
     $gen = ''
-    if ($r.Model -match '-(\d+(?:-\d+)*)$') { $gen = $Matches[1].Replace('-','.') }
+    if ($r.Model -match '-(\d+(?:-\d+)*)(?:-fast)?$') { $gen = $Matches[1].Replace('-','.') }
     $facts = $ClaudeFacts[$r.Model]
     $r |
       Add-Member -NotePropertyName Family     -NotePropertyValue $fam -PassThru |
@@ -268,10 +297,7 @@ if (-not $IncludeDeprecating) {
 }
 
 if ($Latest) {
-    # Keep only the highest Generation within each Family (e.g. for opus,
-    # show 4.8 only — not 4.1, 4.5, 4.6, 4.7). Generation strings sort
-    # naturally for the current Anthropic numbering (4.1, 4.5, 4.6, 4.7,
-    # 4.8) but we sort by [version] to be safe across major bumps.
+    # Compare generations numerically across major bumps; retain fast variants.
     $enriched = $enriched |
         Group-Object Family |
         ForEach-Object {
@@ -319,6 +345,7 @@ switch ($View) {
                     Regions    = $regList
                     Context    = _fmtTok $f.ContextK
                     MaxOutput  = _fmtTok $f.MaxOutK
+                    Lifecycle  = ($_.Group.Lifecycle | Sort-Object -Unique) -join ','
                     Capacity   = $f.DefaultCapUnits
                     Retires    = if ($f.InferenceDeprec) { ([datetime]$f.InferenceDeprec).ToString('yyyy-MM-dd') } else { '' }
                 }
@@ -414,7 +441,6 @@ switch ($OutputFormat) {
             Write-Host ''
             Write-Host 'Constants (same for every row above):' -ForegroundColor DarkGray
             Write-Host '  AccountKind=AIServices  AccountSku=S0  DeploymentSku=GlobalStandard  ModelFormat=Anthropic' -ForegroundColor DarkGray
-            Write-Host '  Status=Preview  MaxDeploymentsPerRegion=3' -ForegroundColor DarkGray
             Write-Host 'Legend: Context/MaxOutput are tokens per call (1M=1,000,000). Capacity = default sku.capacity.' -ForegroundColor DarkGray
         }
     }

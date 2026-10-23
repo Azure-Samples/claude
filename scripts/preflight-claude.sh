@@ -82,19 +82,19 @@ MODELS=()
 CAPACITIES=()
 
 if [ -n "${CLAUDE_HAIKU_MODEL:-}" ]; then
-    FAMILIES+=("haiku");  MODELS+=("$CLAUDE_HAIKU_MODEL");  CAPACITIES+=("${CLAUDE_HAIKU_CAPACITY:-50}")
+    FAMILIES+=("haiku");  MODELS+=("$CLAUDE_HAIKU_MODEL");  CAPACITIES+=("${CLAUDE_HAIKU_CAPACITY:-25}")
 fi
 if [ -n "${CLAUDE_SONNET_MODEL:-}" ]; then
-    FAMILIES+=("sonnet"); MODELS+=("$CLAUDE_SONNET_MODEL"); CAPACITIES+=("${CLAUDE_SONNET_CAPACITY:-50}")
+    FAMILIES+=("sonnet"); MODELS+=("$CLAUDE_SONNET_MODEL"); CAPACITIES+=("${CLAUDE_SONNET_CAPACITY:-25}")
 fi
 if [ -n "${CLAUDE_OPUS_MODEL:-}" ]; then
-    FAMILIES+=("opus");   MODELS+=("$CLAUDE_OPUS_MODEL");   CAPACITIES+=("${CLAUDE_OPUS_CAPACITY:-50}")
+    FAMILIES+=("opus");   MODELS+=("$CLAUDE_OPUS_MODEL");   CAPACITIES+=("${CLAUDE_OPUS_CAPACITY:-25}")
 fi
 
 if [ "${#FAMILIES[@]}" -eq 0 ]; then
     FAMILIES+=("legacy")
     MODELS+=("${CLAUDE_MODEL_NAME:-claude-sonnet-4-6}")
-    CAPACITIES+=("${CLAUDE_MODEL_CAPACITY:-50}")
+    CAPACITIES+=("${CLAUDE_MODEL_CAPACITY:-25}")
 fi
 
 # --- 2. Azure CLI / active subscription ------------------------------------
@@ -125,19 +125,43 @@ for i in "${!FAMILIES[@]}"; do
     MODEL_NAME="${MODELS[$i]}"
     CAPACITY="${CAPACITIES[$i]}"
 
-    # Anthropic publishes Claude as a fetch-style plan named '<offer>-plan-new'.
-    OFFER="anthropic-$MODEL_NAME-offer"
-    PLAN="anthropic-$MODEL_NAME-plan-new"
-    MP_URL="https://management.azure.com/subscriptions/$SUB_ID/providers/Microsoft.MarketplaceOrdering/offerTypes/virtualmachine/publishers/$PUBLISHER/offers/$OFFER/plans/$PLAN/agreements/current?api-version=2021-01-01"
+    # 5.5 offers are not exposed through the legacy MarketplaceOrdering route.
+    if [[ "$MODEL_NAME" =~ ^claude-(opus|sonnet|haiku)-5-5(-fast)?$ ]]; then
+        if CATALOG_COUNT="$(az cognitiveservices model list --location "$LOCATION" --query "length([?model.format=='Anthropic' && model.name=='$MODEL_NAME'])" -o tsv 2>&1)" && [[ "$CATALOG_COUNT" =~ ^[0-9]+$ ]]; then
+            if [ "$CATALOG_COUNT" -eq 0 ]; then
+                fail 4 "Model '$MODEL_NAME' not found in the Anthropic model catalog for '$LOCATION'. Run Get-ClaudeCatalog.ps1 for available models and regions."
+            fi
+            echo "Preflight: '$MODEL_NAME' verified in the regional model catalog."
+        else
+            warn "Regional model catalog query did not return a valid count (RP will validate at deploy time): $CATALOG_COUNT"
+        fi
+        if [ "$MODEL_NAME" = "claude-opus-5-5-fast" ]; then
+            warn "'$MODEL_NAME' has no standalone Marketplace offer. The regional model catalog is checked above; the RP validates applicable terms during provisioning."
+        else
+            OFFER="$MODEL_NAME-offer"
+            MP_URL="https://catalogapi.azure.com/offers/anthropic.$OFFER?api-version=2018-08-01-beta&market=US"
+            if MP_RAW="$(az rest --method get --skip-authorization-header --url "$MP_URL" 2>&1)"; then
+                echo "Preflight: Marketplace offer '$OFFER' verified. The RP validates terms during provisioning."
+            else
+                if echo "$MP_RAW" | grep -qE "was not found|BadRequest|Bad Request|NotFound|Not Found|404"; then
+                    fail 4 "Marketplace offer 'anthropic/$OFFER' not found (family=$FAMILY). Underlying error: $MP_RAW"
+                fi
+                warn "Public Marketplace catalog query failed (RP will validate at deploy time): $MP_RAW"
+            fi
+        fi
+    else
+        OFFER="anthropic-$MODEL_NAME-offer"
+        PLAN="anthropic-$MODEL_NAME-plan-new"
+        MP_URL="https://management.azure.com/subscriptions/$SUB_ID/providers/Microsoft.MarketplaceOrdering/offerTypes/virtualmachine/publishers/$PUBLISHER/offers/$OFFER/plans/$PLAN/agreements/current?api-version=2021-01-01"
 
-    set +e
-    MP_RAW="$(az rest --method get --url "$MP_URL" 2>&1)"
-    MP_EXIT=$?
-    set -e
+        set +e
+        MP_RAW="$(az rest --method get --url "$MP_URL" 2>&1)"
+        MP_EXIT=$?
+        set -e
 
-    if [ "$MP_EXIT" -ne 0 ]; then
-        if echo "$MP_RAW" | grep -qE "was not found|BadRequest"; then
-            fail 4 "Marketplace offer 'anthropic/$OFFER/$PLAN' not found (family=$FAMILY).
+        if [ "$MP_EXIT" -ne 0 ]; then
+            if echo "$MP_RAW" | grep -qE "was not found|BadRequest"; then
+                fail 4 "Marketplace offer 'anthropic/$OFFER/$PLAN' not found (family=$FAMILY).
 
 Likely causes:
   - The model id '$MODEL_NAME' is misspelled.
@@ -149,17 +173,18 @@ Available Anthropic agreements on this subscription:
 
 Underlying error:
 $MP_RAW"
-        fi
-        echo "Preflight: Marketplace catalog query for '$MODEL_NAME' returned an unexpected error (continuing — RP will validate at deploy time):" >&2
-        echo "  $MP_RAW" >&2
-    else
-        ACCEPTED="$(echo "$MP_RAW" | python -c 'import json, sys; print(json.load(sys.stdin)["properties"]["accepted"])' 2>/dev/null || true)"
-        if [ "$ACCEPTED" != "True" ] && [ "$ACCEPTED" != "true" ]; then
-            echo "Preflight: '$MODEL_NAME' marketplace agreement is currently unsigned. The Cognitive Services RP will auto-sign during deployment on eligible subs."
-            echo "         If your subscription blocks RP-initiated subscribes, pre-accept manually:"
-            echo "           az term accept --publisher $PUBLISHER --product $OFFER --plan $PLAN"
+            fi
+            echo "Preflight: Marketplace catalog query for '$MODEL_NAME' returned an unexpected error (continuing — RP will validate at deploy time):" >&2
+            echo "  $MP_RAW" >&2
         else
-            echo "Preflight: '$MODEL_NAME' marketplace agreement signed."
+            ACCEPTED="$(echo "$MP_RAW" | python -c 'import json, sys; print(json.load(sys.stdin)["properties"]["accepted"])' 2>/dev/null || true)"
+            if [ "$ACCEPTED" != "True" ] && [ "$ACCEPTED" != "true" ]; then
+                echo "Preflight: '$MODEL_NAME' marketplace agreement is currently unsigned. The Cognitive Services RP will auto-sign during deployment on eligible subs."
+                echo "         If your subscription blocks RP-initiated subscribes, pre-accept manually:"
+                echo "           az term accept --publisher $PUBLISHER --product $OFFER --plan $PLAN"
+            else
+                echo "Preflight: '$MODEL_NAME' marketplace agreement signed."
+            fi
         fi
     fi
 

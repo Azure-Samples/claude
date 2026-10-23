@@ -26,6 +26,8 @@ description: Deploy Claude models in Microsoft Foundry using one CLI command wit
 
 Ships in both **Bicep** and **Terraform**. Works in the cloud (GitHub Codespaces) or on your laptop.
 
+Current examples use **Claude Sonnet 5.5, Haiku 5.5, and Opus 5.5**. Verify model versions and regional availability in the [live catalog](#choosing-which-models-to-deploy) and [official model documentation](https://learn.microsoft.com/azure/foundry/foundry-models/concepts/claude-models) before deploying.
+
 ![Architecture: azd up provisions a Foundry account, project, and Claude deployments; the postprovision hook configures the local workspace so the Python SDK and Claude Code CLI both call the deployment via Entra ID.](./docs/img/architecture.png)
 
 > [!IMPORTANT]
@@ -54,18 +56,16 @@ The Terraform and Bicep in this template both send a `modelProviderData` block (
 
 The exact "Agree and proceed" dialog the Azure portal renders for a Claude SKU is generated live from the Marketplace offer metadata (Microsoft template + publisher-supplied links). It can change without notice, so this README does not snapshot its text &mdash; instead, open the live marketplace listing for the SKU you plan to deploy:
 
-- Sonnet 4.6 &mdash; <https://azuremarketplace.microsoft.com/en-us/marketplace/apps/anthropic.anthropic-claude-sonnet-4-6-offer>
-- Opus 4.6 &mdash; <https://azuremarketplace.microsoft.com/en-us/marketplace/apps/anthropic.anthropic-claude-opus-4-6-offer>
-- Haiku 4.5 &mdash; <https://azuremarketplace.microsoft.com/en-us/marketplace/apps/anthropic.anthropic-claude-haiku-4-5-offer>
 - All Anthropic offers &mdash; <https://azuremarketplace.microsoft.com/en-us/marketplace/apps?search=anthropic>
+- [Claude model cards in Foundry](https://ai.azure.com/explore/models) &mdash; select the model and review its current terms and deployment options.
 
-After `azd up`, you can audit the auto-signed marketplace agreement record from the CLI (returns metadata only &mdash; `accepted`, `signature`, signed-by, date, `licenseTextLink` &mdash; not the dialog text):
+For legacy offers exposed by MarketplaceOrdering, you can audit the agreement from the CLI using the actual offer and plan IDs. Claude 5.5 uses different offer IDs; a legacy agreement endpoint returning `404` does not prove that a 5.5 model is missing. Review its current Foundry model card and terms instead.
 
 ```bash
 az term show \
   --publisher anthropic \
-  --product anthropic-claude-sonnet-4-6-offer \
-  --plan <plan-name>
+  --product "<offer-id>" \
+  --plan "<plan-id>"
 ```
 
 </details>
@@ -97,7 +97,7 @@ azd auth login          # or: azd auth login --tenant-id <tenant-id>
 azd env new my-claude
 azd env set CLAUDE_ORGANIZATION_NAME "Contoso"
 azd env set AZURE_LOCATION "swedencentral"
-azd env set CLAUDE_SONNET_MODEL "claude-sonnet-4-6"
+azd env set CLAUDE_SONNET_MODEL "claude-sonnet-5-5"
 azd up
 ```
 
@@ -125,7 +125,7 @@ The fastest way to try this without installing anything locally &mdash; the incl
    azd env new my-claude
    azd env set CLAUDE_ORGANIZATION_NAME "Contoso"
    azd env set AZURE_LOCATION "swedencentral"
-   azd env set CLAUDE_SONNET_MODEL "claude-sonnet-4-6"
+   azd env set CLAUDE_SONNET_MODEL "claude-sonnet-5-5"
    azd up
    ```
 
@@ -142,7 +142,7 @@ This repo ships an open [Agent Skills](https://agentskills.io/) playbook. Any as
 
 **Copy this into GitHub Copilot Chat (or your AI agent) inside the cloned repo:**
 
-> Deploy Claude on Microsoft Foundry using this repo. Use **Bicep**, region **eastus2**, model **claude-sonnet-4-6**, organization name **Contoso**.
+> Deploy Claude on Microsoft Foundry using this repo. Use **Bicep**, region **eastus2**, model **claude-sonnet-5-5**, organization name **Contoso**.
 
 That's the full one-shot &mdash; just swap the bolded values to suit you. Optional additions:
 
@@ -200,17 +200,19 @@ python src/hello_claude_token_refresh.py    # long-running variant with per-requ
 <details>
 <summary><strong>SDK call shape</strong> &mdash; the minimal Python snippet and long-running token refresh</summary>
 
-We use the plain `anthropic.Anthropic` client. The Entra ID token is captured once at startup and is valid for ~1 hour &mdash; fine for a one-shot script or a short-lived process. For long-running processes, use the token-refresh shim below.
+We use the SDK's native `AnthropicFoundry` client with an Azure Identity token provider. Tokens are cached and refreshed before expiry, including in the streaming sample. This avoids platform-specific authentication changes in the generic `Anthropic` client.
 
 ```python
-from anthropic import Anthropic
-from azure.identity import DefaultAzureCredential
+import os
 
-token = DefaultAzureCredential().get_token(
-    "https://ai.azure.com/.default"
-).token
-client = Anthropic(
-    auth_token=token,
+from anthropic import AnthropicFoundry
+from azure.identity import DefaultAzureCredential, get_bearer_token_provider
+
+os.environ.pop("ANTHROPIC_FOUNDRY_RESOURCE", None)
+client = AnthropicFoundry(
+    azure_ad_token_provider=get_bearer_token_provider(
+        DefaultAzureCredential(), "https://ai.azure.com/.default"
+    ),
     base_url="https://<resource>.services.ai.azure.com/anthropic",
 )
 msg = client.messages.create(
@@ -222,33 +224,16 @@ msg = client.messages.create(
 
 > Pass the **deployment name** (not the model id) as `model`. The SDK appends `/v1/messages` to the configured `base_url`.
 
+The samples print only text blocks; Claude 5.5 can also return thinking blocks. An empty text response fails explicitly, with a token-budget hint, instead of reporting success. For a deployment in a non-default tenant, set `AZURE_TENANT_ID` in your process environment or gitignored `.env.local`. The shared [token provider](./src/claude_auth.py) forwards that tenant to the credential's token request, including its Azure CLI and azd authentication paths.
+
+The shared client factory clears `ANTHROPIC_FOUNDRY_RESOURCE` only inside the Python process so the explicit `CLAUDE_BASE_URL` wins. This lets the SDK run after sourcing the Claude Code activator without a `base_url and resource are mutually exclusive` error; your parent shell's CLI settings are unchanged.
+
 <details id="advanced-long-running-processes-auto-refreshing-the-entra-id-token">
 <summary><strong>Long-running processes: auto-refreshing the Entra ID token</strong></summary>
 
-A captured Entra ID token starts failing with `401 Unauthorized` after ~1 hour, so services, daemons, long batch jobs, and notebooks left open need a refresh path.
+A captured static token eventually expires. [src/hello_claude_token_refresh.py](./src/hello_claude_token_refresh.py) demonstrates `AnthropicFoundry(azure_ad_token_provider=...)` instead: Azure Identity caches the token and refreshes it before expiry. The one-shot and streaming samples use the same provider; no custom SDK `credentials=` adapter or OAuth beta header is needed.
 
-Anthropic SDK v0.98+ added a `credentials=` constructor parameter that takes an `AccessTokenProvider` callable. The SDK wraps it in a `TokenCache` that calls the provider lazily, caches the token until expiry, and on a 401 invalidates the cache and retries the request once with a fresh token &mdash; exactly what we want.
-
-[src/hello_claude_token_refresh.py](./src/hello_claude_token_refresh.py) wires `azure.identity.DefaultAzureCredential` into that hook:
-
-```python
-from anthropic import Anthropic
-from anthropic.lib.credentials import AccessToken
-from azure.identity import DefaultAzureCredential
-
-credential = DefaultAzureCredential()
-
-def entra_token_provider(*, force_refresh: bool = False) -> AccessToken:
-    token = credential.get_token("https://ai.azure.com/.default")
-    return AccessToken(token=token.token, expires_at=token.expires_on)
-
-client = Anthropic(
-    credentials=entra_token_provider,
-    base_url="https://<resource>.services.ai.azure.com/anthropic",
-)
-```
-
-Requires `anthropic>=0.109.1` (pinned in [requirements.txt](./requirements.txt)).
+[requirements.txt](./requirements.txt) targets Anthropic SDK **2.1+** and Azure Identity **1.26+**, with upper bounds at the next major version. SDK 2.x uses `httpx2` for custom transports; it is not interchangeable with `httpx`.
 
 </details>
 
@@ -312,9 +297,9 @@ Set one, two, or all three of `CLAUDE_HAIKU_MODEL` / `CLAUDE_SONNET_MODEL` / `CL
 
 | Goal | Set |
 |---|---|
-| All three families (recommended) | `CLAUDE_HAIKU_MODEL=claude-haiku-4-5`, `CLAUDE_SONNET_MODEL=claude-sonnet-4-6`, `CLAUDE_OPUS_MODEL=claude-opus-4-8` |
-| Just sonnet | `CLAUDE_SONNET_MODEL=claude-sonnet-4-6` (leave the others unset) |
-| Just opus | `CLAUDE_OPUS_MODEL=claude-opus-4-8` (or an earlier `-4-x` if quota is tight) |
+| All three families (recommended) | `CLAUDE_HAIKU_MODEL=claude-haiku-5-5`, `CLAUDE_SONNET_MODEL=claude-sonnet-5-5`, `CLAUDE_OPUS_MODEL=claude-opus-5-5` |
+| Just sonnet | `CLAUDE_SONNET_MODEL=claude-sonnet-5-5` (leave the others unset) |
+| Just opus | `CLAUDE_OPUS_MODEL=claude-opus-5-5` (or an earlier catalog model if quota is tight) |
 | Single legacy model (back-compat) | `CLAUDE_MODEL_NAME=...` and leave all `CLAUDE_*_MODEL` vars empty |
 
 Override capacity per family with `CLAUDE_HAIKU_CAPACITY` / `CLAUDE_SONNET_CAPACITY` / `CLAUDE_OPUS_CAPACITY` (TPM &divide; 1000, default `25` each).
@@ -325,6 +310,8 @@ Run [`./Get-ClaudeCatalog.ps1`](./Get-ClaudeCatalog.ps1) to see the live catalog
 ./Get-ClaudeCatalog.ps1            # compact table: model, version, regions, context, capacity, retirement date
 ./Get-ClaudeCatalog.ps1 -Latest    # just the newest generation per family
 ```
+
+Model IDs use hyphens (`claude-opus-5-5`); SDK calls use your actual **deployment name**, which may differ. Choose `CLAUDE_MODEL_VERSION` from the catalog: version `1` is hosted on Anthropic infrastructure, while version `2`, where available, is hosted on Azure. The shared version setting applies to all selected families. Existing legacy `CLAUDE_MODEL_NAME` defaults remain unchanged for compatibility.
 
 </details>
 
@@ -341,15 +328,16 @@ Rows marked **Attest** below are the three `modelProviderData` fields sent to An
 | `CLAUDE_COUNTRY_CODE` | **Attest** | `US` | 2-letter ISO. Country your organization operates from. |
 | `CLAUDE_INDUSTRY` | **Attest** | `technology` | **lowercase**: `technology`, `finance`, `healthcare`, `education`, `retail`, `manufacturing`, `government`, `media`, `other` |
 | `AZURE_LOCATION` | yes | &mdash; | `eastus2` / `swedencentral` (all 3 families) / `westus2` (sonnet + opus) |
-| `CLAUDE_HAIKU_MODEL` | no | *(empty)* | Haiku family model id (e.g. `claude-haiku-4-5`). Empty = skip. |
-| `CLAUDE_SONNET_MODEL` | no | *(empty)* | Sonnet family model id (e.g. `claude-sonnet-4-6`). Empty = skip. |
-| `CLAUDE_OPUS_MODEL` | no | *(empty)* | Opus family model id (e.g. `claude-opus-4-6`). Empty = skip. |
+| `CLAUDE_HAIKU_MODEL` | no | *(empty)* | Haiku family model id (e.g. `claude-haiku-5-5`). Empty = skip. |
+| `CLAUDE_SONNET_MODEL` | no | *(empty)* | Sonnet family model id (e.g. `claude-sonnet-5-5`). Empty = skip. |
+| `CLAUDE_OPUS_MODEL` | no | *(empty)* | Opus family model id (e.g. `claude-opus-5-5`). Empty = skip. |
 | `CLAUDE_HAIKU_CAPACITY` | no | `25` | Haiku TPM / 1000 |
 | `CLAUDE_SONNET_CAPACITY` | no | `25` | Sonnet TPM / 1000 |
 | `CLAUDE_OPUS_CAPACITY` | no | `25` | Opus TPM / 1000 |
 | `CLAUDE_MODEL_VERSION` | no | `1` | Applies to all deployed families. |
 | `CLAUDE_MODEL_NAME` | no | `claude-sonnet-4-6` | **Legacy.** Only used when all three `CLAUDE_*_MODEL` vars are empty (single-deployment fallback). |
 | `CLAUDE_MODEL_CAPACITY` | no | `25` | **Legacy.** Capacity for the legacy single-deployment fallback. |
+| `AZURE_TENANT_ID` | no | credential default | **SDK only.** Optional tenant for token requests. Keep real IDs in process environment or gitignored `.env.local`, never tracked files. |
 | `ASSIGN_RBAC` | no | `false` | `true` to grant `Cognitive Services User` (least-privilege inference role) on the Foundry account to `AZURE_PRINCIPAL_ID` (needs `roleAssignments/write`) |
 | `CLAUDE_CODE_AUTO_INSTALL` | no | `false` | `true` to let the postprovision hook run the official Claude Code installer ([`install.ps1`](https://claude.ai/install.ps1) / [`install.sh`](https://claude.ai/install.sh)) when `claude` isn't already on PATH |
 | `CLAUDE_WRITE_VSCODE_SETTINGS` | no | `false` | `true` to opt in to having the postprovision hook write `.vscode/settings.json` for the [Claude Code VS Code extension](https://marketplace.visualstudio.com/items?itemName=anthropic.claude-code). Default skips it &mdash; the CLI / SDK don't need workspace settings. |
@@ -587,10 +575,11 @@ What the preflight does, and does not, do:
 
 | Check | Behavior |
 |---|---|
-| `CLAUDE_ORGANIZATION_NAME` / `AZURE_LOCATION` set | Hard fail (exit 1) if missing. |
-| Marketplace offer/plan resolves | Hard fail (exit 4) on 400 "offer not found" &mdash; catches `CLAUDE_MODEL_NAME` typos and unreleased SKUs. The script queries publisher `anthropic` with offer/plan naming `anthropic-<model-name>-offer` / `anthropic-<model-name>-plan-new`. |
-| Marketplace agreement `properties.accepted == true` | Warns only. The Cognitive Services RP auto-signs the agreement during deployment on eligible subs, so an unsigned status is informational. Pre-accept manually if your sub blocks RP-initiated subscribes. |
-| `az cognitiveservices usage list` quota headroom for the SKU | **Hard fail (exit 6)** if `currentValue + requested > limit`. This is the most common cause of deployment failures and the preflight blocks `azd up` early with an actionable message. |
+| `CLAUDE_ORGANIZATION_NAME` / `AZURE_LOCATION` set | Warns if missing; skips region-dependent checks when no location is set so azd can prompt. Missing Azure CLI/login also produces a warning. |
+| Claude 5.5 model and public Marketplace offer | Checks the regional model catalog and the public `claude-<family>-5-5-offer` listing without sending Azure credentials. Missing models/offers hard-fail with exit 4. The `-fast` variant has no standalone offer; its regional catalog entry is checked and the RP validates applicable terms. |
+| Legacy Marketplace offer/plan resolves | Hard fail (exit 4) on "offer not found", using legacy `anthropic-<model-name>-offer` / `anthropic-<model-name>-plan-new` IDs. |
+| Marketplace agreement accepted | Informational for legacy offers. The RP validates terms during deployment; a legacy MarketplaceOrdering `404` is not used to reject a public 5.5 offer. |
+| `az cognitiveservices usage list` quota headroom for the SKU | **Terraform: exit 6** when capacity is insufficient. **Bicep: warning**, because ARM's preflight surfaces `InsufficientQuota` itself. Default capacity is `25`, matching both templates. |
 
 > **Why a quota check?** The Cognitive Services RP returns an opaque `400 715-123420 "An error occurred. Please reach out to support for additional assistance."` when there isn't enough TPM quota for the requested capacity. Worse, Terraform's `azapi_resource` skips ARM preflight validation, so the user sees this opaque code with no hint that quota is the cause. (Bicep / `az deployment group create` surface the real `InsufficientQuota` error.) The preflight catches the same condition before the deployment is even attempted, with a clear message and remediation instructions.
 
@@ -599,7 +588,7 @@ Run it standalone any time:
 ```powershell
 $env:CLAUDE_ORGANIZATION_NAME = "Contoso"
 $env:AZURE_LOCATION = "eastus2"
-$env:CLAUDE_MODEL_NAME = "claude-sonnet-4-6"
+$env:CLAUDE_SONNET_MODEL = "claude-sonnet-5-5"
 $env:CLAUDE_SONNET_CAPACITY = "25"   # default 25; lower further if quota is tight
 pwsh -File scripts/preflight-claude.ps1
 ```
@@ -607,7 +596,7 @@ pwsh -File scripts/preflight-claude.ps1
 If the quota check fails, see what's used:
 
 ```powershell
-az cognitiveservices usage list -l eastus2 --query "[?contains(name.value,'claude-sonnet-4-6')].{quota:name.value, used:currentValue, limit:limit}" -o table
+az cognitiveservices usage list -l eastus2 --query "[?contains(name.value,'claude-sonnet-5-5')].{quota:name.value, used:currentValue, limit:limit}" -o table
 ```
 
 To list all Anthropic agreements (signed or not) visible on the active subscription:
@@ -617,10 +606,10 @@ $sub = az account show --query id -o tsv
 az rest --method get --url "https://management.azure.com/subscriptions/$sub/providers/Microsoft.MarketplaceOrdering/agreements?api-version=2021-01-01" --query "value[?properties.publisher=='anthropic']"
 ```
 
-To pre-accept explicitly (rarely needed thanks to the RP auto-accept; useful for restricted-subscription scenarios):
+For legacy offers, pre-accept only with the actual offer/plan IDs from its listing. For 5.5, review the Foundry model card's terms; do not fabricate legacy plan names:
 
 ```powershell
-az term accept --publisher anthropic --product anthropic-claude-sonnet-4-6-offer --plan anthropic-claude-sonnet-4-6-plan-new
+az term accept --publisher anthropic --product "<offer-id>" --plan "<plan-id>"
 ```
 
 </details>
@@ -657,27 +646,21 @@ Flags:
 
 Notes on the output:
 
-- **RPM is not a separate quota line** in the Usages API for Claude &mdash; only TPM is allocated. The `RPM Limit*` column is **derived** from the per-model RPM:TPM ratios published in the [Foundry Claude docs](https://learn.microsoft.com/azure/foundry/foundry-models/how-to/use-foundry-models-claude#api-quotas-and-limits) (e.g. Sonnet 4.5 ships at 2 RPM per 1 kTPM; everything else at 1:1).
+- **RPM is not a separate quota line** in the Usages API for Claude. `RPM Limit*` is derived from published RPM:ITPM ratios in the [quota documentation](https://learn.microsoft.com/azure/foundry/foundry-models/concepts/claude-models-quotas-limits). The 5.5 models use 1 RPM per 1,000 input tokens/minute; unknown model ratios display `-`.
 - **TPM Limit values are reported in thousands** by the underlying API; the script multiplies by 1,000 so the table reads in raw tokens-per-minute.
 - The **Model Capacities API requires `modelVersion`**, not just `modelName`. The script discovers active versions automatically from `locations/{region}/models` filtered to `format=Anthropic`.
-- The `Def RPM` / `Def TPM` columns are the **public non-EA defaults** (always 0/0 because Claude is gated to Enterprise + MCA-E subscriptions); the `TPM Used` / `TPM Limit` / `RPM Limit*` / `Capacity` columns are the values your EA/MCA-E subscription is actually getting.
-
-</details>
+- `Def RPM` / `Def TPM` display `-`: defaults vary by subscription type and hosting. The `TPM Used` / `TPM Limit` / `RPM Limit*` / `Capacity` columns reflect the queried subscription, not an assumed public default.
 
 <details id="free-quota-held-by-soft-deleted-accounts">
 <summary><strong>Free quota held by soft-deleted Cognitive Services accounts</strong></summary>
 
-When you `azd down` (or otherwise delete) a Foundry / AIServices account, Azure does **not** immediately release the TPM quota it reserved. The account moves to a *soft-deleted* state and **continues to count against your per-model quota** for up to 48 hours, after which it is permanently purged automatically.
-
-In day-to-day testing &mdash; where you may create and destroy several Foundry accounts in the same region in quick succession &mdash; this is the most common cause of "quota looks full but I have no live deployments" failures (which surface as opaque `715-123420` from Terraform or `InsufficientQuota` from Bicep).
-
-**List soft-deleted accounts in the active subscription:**
+Deleted Foundry accounts can reserve TPM for up to 48 hours before Azure automatically purges them. To free quota sooner, list the deleted accounts:
 
 ```powershell
 az cognitiveservices account list-deleted --query "[].{name:name, location:location, deletionDate:properties.deletionDate}" -o table
 ```
 
-**Purge them one at a time** (the original RG name is part of the deleted-account id and must be passed verbatim &mdash; the RG itself does not have to still exist):
+**Purging is destructive and irreversible. Confirm the exact account name, region, and original resource group before proceeding.** Purge only the confirmed account; the original resource group need not still exist:
 
 ```powershell
 az cognitiveservices account purge `
@@ -686,37 +669,13 @@ az cognitiveservices account purge `
   --resource-group <original-rg-name>
 ```
 
-**Purge all of them in parallel** (faster &mdash; each purge is a slow LRO):
-
-```powershell
-$accounts = az cognitiveservices account list-deleted -o json | ConvertFrom-Json
-$jobs = foreach ($a in $accounts) {
-    $rg = ($a.id -split '/')[8]   # /subscriptions/<sub>/providers/Microsoft.CognitiveServices/locations/<loc>/resourceGroups/<rg>/deletedAccounts/<name>
-    Start-Job -ScriptBlock {
-        param($n,$l,$r)
-        az cognitiveservices account purge --name $n --location $l --resource-group $r
-    } -ArgumentList $a.name, $a.location, $rg
-}
-$jobs | Wait-Job | Receive-Job
-$jobs | Remove-Job
-```
-
-POSIX equivalent:
-
-```bash
-az cognitiveservices account list-deleted -o tsv \
-  --query "[].[name, location, id]" | while IFS=$'\t' read -r name location id; do
-    rg=$(echo "$id" | awk -F'/' '{print $9}')
-    az cognitiveservices account purge --name "$name" --location "$location" --resource-group "$rg" &
-done
-wait
-```
-
-After all purges complete, re-check quota:
+After the purge completes, re-check quota:
 
 ```powershell
 az cognitiveservices usage list -l <region> --query "[?contains(name.value,'claude-')]" -o table
 ```
+
+</details>
 
 </details>
 
@@ -738,17 +697,18 @@ The Terraform variant uses `azapi_resource` for both the Foundry account and the
 | `Project can only be created under AIServices Kind account with allowProjectManagement set to true` | Account property missing. Both variants here set it; check you didn't downgrade the API version. |
 | `404 Not Found` on inference | Base URL must end in `/anthropic` &mdash; `https://<resource>.services.ai.azure.com/anthropic`. |
 | `401 Unauthorized` | Token scope must be `https://ai.azure.com/.default`. Re-run `az login`. |
-| `401 Unauthorized` after ~1 hour of running | The Entra ID token captured at startup has expired. Pass `credentials=` to `Anthropic(...)` instead of `auth_token=` &mdash; see [long-running processes](#advanced-long-running-processes-auto-refreshing-the-entra-id-token) and [src/hello_claude_token_refresh.py](./src/hello_claude_token_refresh.py). The SDK's `TokenCache` refreshes the token on 401 and retries once. |
+| `401 Unauthorized` after ~1 hour of running | A captured static token has expired. Use `AnthropicFoundry(azure_ad_token_provider=...)` &mdash; see [long-running processes](#advanced-long-running-processes-auto-refreshing-the-entra-id-token). All Entra ID samples cache and refresh tokens before expiry. |
+| `AttributeError: 'ThinkingBlock' object has no attribute 'text'` | Claude can return thinking or other non-text blocks. Check `block.type == "text"` before reading `block.text`, as the samples do. |
 | `403 Forbidden` | Missing a data-plane role on the Foundry account. Grant `Cognitive Services User`, `Foundry User` (formerly `Azure AI User`), or `Azure AI Developer` (see [Required permissions](#required-permissions)). |
 | `Region not available` | Deploy to `eastus2` or `swedencentral` (or `westus2` for opus-only). |
 | Subscription can't deploy Claude | Confirm subscription eligibility per the [official docs](https://learn.microsoft.com/azure/ai-foundry/foundry-models/how-to/use-foundry-models-claude#prerequisites). The [preprovision preflight](#preprovision-preflight-marketplace-catalog--quota) warns about this before `azd up` calls the RP. |
-| `Error occurred when subscribing to Marketplace: Marketplace Subscription purchase eligibility check failed` | Your subscription cannot purchase the Anthropic offer (no entitlement, sandbox sub, paid-offer policy denial, etc.). Either use a subscription with Claude-on-Foundry entitlement, or pre-accept the agreement explicitly with `az term accept --publisher anthropic --product anthropic-<model>-offer --plan anthropic-<model>-plan-new`. |
+| `Error occurred when subscribing to Marketplace: Marketplace Subscription purchase eligibility check failed` | Verify subscription eligibility and the current Foundry model card's terms. For legacy offers, pre-accept only with its actual offer/plan IDs; do not apply legacy naming to 5.5. |
 | Opaque `400 715-123420 "An error occurred. Please reach out to support for additional assistance."` on the Terraform deployment step (RG / Foundry account / project all succeed) | **Insufficient quota.** Terraform's `azapi_resource` bypasses ARM preflight validation and the Cognitive Services RP returns this generic code instead of `InsufficientQuota`. **Fix:** check `az cognitiveservices usage list -l <region> --query "[?contains(name.value,'<model>')]"` &mdash; if `currentValue + requestedCapacity > limit`, lower `CLAUDE_SONNET_CAPACITY` / `CLAUDE_HAIKU_CAPACITY` / `CLAUDE_OPUS_CAPACITY` via `azd env set`, delete unused deployments to free capacity, or request a quota increase in the Foundry portal. **Also check for soft-deleted accounts** still holding quota &mdash; see [Free quota held by soft-deleted accounts](#free-quota-held-by-soft-deleted-accounts). To confirm it really is quota, re-run on the Bicep variant which surfaces the clearer `InsufficientQuota` error. |
 | Bicep: `InsufficientQuota: This operation require N new capacity in quota Tokens Per Minute (thousands) - Claude <model>, which is bigger than the current available capacity X. The current quota usage is U and the quota limit is L.` | Same root cause as `715-123420` above, just with a clear message because Bicep goes through ARM preflight. Lower the capacity env var(s) or free up quota. |
 | `GatewayTimeout: The gateway did not receive a response from 'Microsoft.CognitiveServices' within the specified time period.` during the model deployment step, often with the deployment stuck in `Creating` | **ARM-layer poll timeout on a slow long-running operation, not a real failure.** The Cognitive Services RP keeps working after ARM gives up; the model deployment can still reach `Succeeded` minutes later. First-time Claude provisioning on a fresh resource is the slowest combination, and times vary by region and family. **Do not re-run `azd up` blindly &mdash; it can collide with the in-flight LRO.** Check the server-side state first: run `pwsh -File scripts/verify-claude-code.ps1 -WaitForDeployment` (POSIX: `bash scripts/verify-claude-code.sh --wait-for-deployment`), which polls `az cognitiveservices account deployment list` and waits while any deployment is still `Creating`. Or check directly: `az cognitiveservices account deployment list -g <rg> -n <foundry-account>`. If state is already `Succeeded`, run `azd env refresh` to repopulate outputs and you're done. |
 | Preflight: `Marketplace offer ... not found` | `CLAUDE_MODEL_NAME` is misspelled, the model isn't in the Anthropic-on-Foundry catalog yet, or Anthropic changed the plan-name convention. |
 | Preflight: `Quota insufficient` (exit 6) | Requested `CLAUDE_*_CAPACITY` plus existing usage exceeds the per-region quota limit. Lower the requested capacity, free up quota by deleting unused deployments, or [purge soft-deleted accounts](#free-quota-held-by-soft-deleted-accounts) that may still be holding TPM. |
-| Quota looks full but you have no live deployments (`az cognitiveservices usage list` shows `currentValue > 0`, deployment still fails with `715-123420` / `InsufficientQuota`) | **Soft-deleted Cognitive Services accounts still reserve quota for 48 h.** A previous `azd down` (or any RG / account delete) puts the AIServices account in a recoverable state that keeps holding TPM. **Fix:** list and purge them: `az cognitiveservices account list-deleted -o table` then `az cognitiveservices account purge --name <name> --location <region> --resource-group <rg>` for each. See [Free quota held by soft-deleted accounts](#free-quota-held-by-soft-deleted-accounts). |
+| Quota looks full but you have no live deployments | Soft-deleted accounts can still reserve TPM. See [Free quota held by soft-deleted accounts](#free-quota-held-by-soft-deleted-accounts) for the list-and-purge workflow; confirm before deleting anything. |
 | `401 PermissionDenied: Principal does not have access to API/Operation` intermittently &mdash; same code passes seconds later | Data-plane RBAC propagation lag on a freshly-granted role (`Cognitive Services User` / `Foundry User` / `Azure AI Developer`). The grant can take a few minutes to land on the Foundry data plane even after `az role assignment create` returns. When `ASSIGN_RBAC=true`, this kit serializes the model deployments after the role assignment so the deployment LRO absorbs the propagation wait &mdash; the first call after `azd up` should just work. If you granted the role manually *after* `azd up`, wait a minute and retry; verify the assignment with `az role assignment list --assignee <oid> --scope <foundry-account-id> -o table`. |
 | `claude -p` returns `The model claude-<family>-... is not available on your foundry deployment. Try --model to switch to ...` | Your user-global `~/.claude/settings.json` has `"model"` set to a family this workspace didn't deploy. The postprovision hook writes a workspace `.claude/settings.json` with `"model"` pinned to a deployed family, which overrides the global &mdash; but if you re-ran `azd up` *before* the hook update, or your global has a per-project override, the workspace pin won't apply. Either re-run `pwsh -File scripts/configure-claude-code.ps1` to regenerate `.claude/settings.json`, pick the family explicitly via `claude -p --model <sonnet\|opus\|haiku>`, or edit `~/.claude/settings.json` to remove the `"model"` line. |
 | Windows: `UnicodeEncodeError: 'charmap' codec can't encode character '\U0001f60a'` printing the model's response | The Foundry sample apps happily return emoji and other non-CP1252 characters; the default Windows console (cp1252) can't render them. Either set `$env:PYTHONIOENCODING = "utf-8"` before running, or switch the console to UTF-8 with `chcp 65001`. The Python samples already handle this gracefully, but third-party tooling may not. |

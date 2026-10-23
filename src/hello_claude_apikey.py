@@ -4,9 +4,8 @@ Useful when the deployer lacks a data-plane role on the Foundry account
 (e.g. `Cognitive Services User`) for Entra ID auth. For production, prefer
 the Entra ID flow in src/hello_claude.py.
 
-Note: this uses the plain `Anthropic` client. For API-key auth, the Foundry
-endpoint accepts the standard `x-api-key` header, so nothing Foundry-specific
-is needed here.
+AnthropicFoundry sends the Foundry API-key headers. The generic Anthropic
+client's API-key authentication changed in SDK 2.x and is not interchangeable.
 """
 
 from __future__ import annotations
@@ -14,8 +13,9 @@ from __future__ import annotations
 import os
 import sys
 
-from anthropic import Anthropic
 from dotenv import load_dotenv
+
+from claude_auth import create_foundry_client
 
 
 def main() -> int:
@@ -33,14 +33,24 @@ def main() -> int:
         )
         return 1
 
-    client = Anthropic(api_key=api_key, base_url=base_url)
+    client = create_foundry_client(base_url, api_key=api_key)
     msg = client.messages.create(
         model=deployment,
         max_tokens=512,
         messages=[{"role": "user", "content": "What are 3 things to visit in Seattle?"}],
     )
+    has_text = False
     for block in msg.content:
-        print(block.text)
+        if block.type == "text" and block.text.strip():
+            print(block.text)
+            has_text = True
+    if not has_text:
+        print(
+            f"No text response (stop_reason={msg.stop_reason}). "
+            "Increase max_tokens if the response exhausted its budget.",
+            file=sys.stderr,
+        )
+        return 1
     print(f"\n[usage] input={msg.usage.input_tokens} output={msg.usage.output_tokens}")
     return 0
 

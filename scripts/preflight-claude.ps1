@@ -5,11 +5,11 @@
 .DESCRIPTION
     Gates `azd up` on:
       1. Required env vars being set.
-      2. (Informational) Marketplace catalog: the Anthropic offer resolves
-         via the Microsoft.MarketplaceOrdering REST API. A missing offer
-         is a hard fail (typo / unreleased SKU). The Cognitive Services
-         RP auto-signs the agreement during deployment on eligible subs,
-         so an unsigned status is informational only.
+      2. Model/Marketplace catalogs: 5.5 uses the regional model catalog
+         and unauthenticated public offer listings; legacy models use
+         Microsoft.MarketplaceOrdering. A missing model/offer hard-fails.
+         The RP validates terms during deployment; a legacy agreement
+         endpoint returning 404 is not proof that a 5.5 offer is missing.
       3. **Per-region Cognitive Services quota headroom** per model.
          A hard fail (exit 6) when `currentValue + requestedCapacity >
          limit`. This is the most common cause of `azd up` failures and
@@ -30,7 +30,7 @@
 .NOTES
     Exit codes:
       0  Preflight passed (or skipped — see warnings).
-      4  Marketplace offer not found (typo in a model name, or model not
+      4  Model or Marketplace offer not found (typo in a model name, or model not
          in the Anthropic-on-Foundry catalog yet).
       6  Insufficient quota (Terraform variant only; on Bicep this is a
          warning because azd's own ARM preflight already surfaces it).
@@ -94,13 +94,13 @@ $location = $env:AZURE_LOCATION
 # Build the list of (family, model, capacity) tuples to validate. Empty
 # family vars are skipped. If none are set, fall back to legacy single-model.
 $requested = @()
-if ($env:CLAUDE_HAIKU_MODEL)  { $requested += [pscustomobject]@{ Family='haiku';  Model=$env:CLAUDE_HAIKU_MODEL;  Capacity=[int]($env:CLAUDE_HAIKU_CAPACITY  | ForEach-Object { if ($_) { $_ } else { 50 } }) } }
-if ($env:CLAUDE_SONNET_MODEL) { $requested += [pscustomobject]@{ Family='sonnet'; Model=$env:CLAUDE_SONNET_MODEL; Capacity=[int]($env:CLAUDE_SONNET_CAPACITY | ForEach-Object { if ($_) { $_ } else { 50 } }) } }
-if ($env:CLAUDE_OPUS_MODEL)   { $requested += [pscustomobject]@{ Family='opus';   Model=$env:CLAUDE_OPUS_MODEL;   Capacity=[int]($env:CLAUDE_OPUS_CAPACITY   | ForEach-Object { if ($_) { $_ } else { 50 } }) } }
+if ($env:CLAUDE_HAIKU_MODEL)  { $requested += [pscustomobject]@{ Family='haiku';  Model=$env:CLAUDE_HAIKU_MODEL;  Capacity=[int]($env:CLAUDE_HAIKU_CAPACITY  | ForEach-Object { if ($_) { $_ } else { 25 } }) } }
+if ($env:CLAUDE_SONNET_MODEL) { $requested += [pscustomobject]@{ Family='sonnet'; Model=$env:CLAUDE_SONNET_MODEL; Capacity=[int]($env:CLAUDE_SONNET_CAPACITY | ForEach-Object { if ($_) { $_ } else { 25 } }) } }
+if ($env:CLAUDE_OPUS_MODEL)   { $requested += [pscustomobject]@{ Family='opus';   Model=$env:CLAUDE_OPUS_MODEL;   Capacity=[int]($env:CLAUDE_OPUS_CAPACITY   | ForEach-Object { if ($_) { $_ } else { 25 } }) } }
 
 if ($requested.Count -eq 0) {
     $legacyModel    = if ($env:CLAUDE_MODEL_NAME) { $env:CLAUDE_MODEL_NAME } else { "claude-sonnet-4-6" }
-    $legacyCapacity = if ($env:CLAUDE_MODEL_CAPACITY) { [int]$env:CLAUDE_MODEL_CAPACITY } else { 50 }
+    $legacyCapacity = if ($env:CLAUDE_MODEL_CAPACITY) { [int]$env:CLAUDE_MODEL_CAPACITY } else { 25 }
     $requested = ,([pscustomobject]@{ Family='legacy'; Model=$legacyModel; Capacity=$legacyCapacity })
 }
 
@@ -130,20 +130,52 @@ foreach ($r in $requested) {
     $capacity  = $r.Capacity
     $family    = $r.Family
 
-    # --- Marketplace catalog check (offer exists; agreement status informational) ---
-    # Anthropic publishes Claude as a fetch-style plan named '<offer>-plan-new'
-    # ('-test-plan' is a non-purchasable stub used by some legacy tooling).
-    $offer = "anthropic-$modelName-offer"
-    $plan  = "anthropic-$modelName-plan-new"
-    $mpUrl = "https://management.azure.com/subscriptions/$subId/providers/Microsoft.MarketplaceOrdering/offerTypes/virtualmachine/publishers/$publisher/offers/$offer/plans/$plan/agreements/current?api-version=2021-01-01"
+    # 5.5 offers are not exposed through the legacy MarketplaceOrdering route.
+    if ($modelName -match '^claude-(opus|sonnet|haiku)-5-5(?:-fast)?$') {
+        $catalogRaw = az cognitiveservices model list --location $location -o json 2>&1
+        if ($LASTEXITCODE -eq 0) {
+            $models = $catalogRaw | ConvertFrom-Json
+            $matching = @($models | Where-Object {
+                $_.model.format -eq 'Anthropic' -and $_.model.name -eq $modelName
+            })
+            if ($matching.Count -eq 0) {
+                Fail 4 "Model '$modelName' not found in the Anthropic model catalog for '$location'. Run Get-ClaudeCatalog.ps1 for available models and regions."
+            }
+            Write-Host "Preflight: '$modelName' verified in the regional model catalog." -ForegroundColor Green
+        } else {
+            Warn "Regional model catalog query failed (RP will validate at deploy time): $($catalogRaw | Out-String)"
+        }
+        if ($modelName -eq 'claude-opus-5-5-fast') {
+            Warn "'$modelName' has no standalone Marketplace offer. The regional model catalog is checked above; the RP validates applicable terms during provisioning."
+        } else {
+            $offer = "$modelName-offer"
+            $mpUrl = "https://catalogapi.azure.com/offers/anthropic.${offer}?api-version=2018-08-01-beta&market=US"
+            try {
+                # Native HTTP avoids az.cmd reparsing the URL's query separators.
+                Invoke-RestMethod -Uri $mpUrl -TimeoutSec 30 | Out-Null
+                Write-Host "Preflight: Marketplace offer '$offer' verified. The RP validates terms during provisioning." -ForegroundColor Green
+            } catch [Microsoft.PowerShell.Commands.HttpResponseException] {
+                $status = [int]$_.Exception.Response.StatusCode
+                if ($status -in 400, 404) {
+                    Fail 4 "Marketplace offer 'anthropic/$offer' not found (family=$family). HTTP $status."
+                }
+                Warn "Public Marketplace catalog query failed with HTTP $status (RP will validate at deploy time)."
+            } catch [System.Net.Http.HttpRequestException], [System.Threading.Tasks.TaskCanceledException] {
+                Warn "Public Marketplace catalog query failed (RP will validate at deploy time): $($_.Exception.Message)"
+            }
+        }
+    } else {
+        $offer = "anthropic-$modelName-offer"
+        $plan  = "anthropic-$modelName-plan-new"
+        $mpUrl = "https://management.azure.com/subscriptions/$subId/providers/Microsoft.MarketplaceOrdering/offerTypes/virtualmachine/publishers/$publisher/offers/$offer/plans/$plan/agreements/current?api-version=2021-01-01"
 
-    $mpRaw  = az rest --method get --url $mpUrl 2>&1
-    $mpExit = $LASTEXITCODE
+        $mpRaw  = az rest --method get --url $mpUrl 2>&1
+        $mpExit = $LASTEXITCODE
 
-    if ($mpExit -ne 0) {
-        $msg = ($mpRaw | Out-String).Trim()
-        if ($msg -match "was not found" -or $msg -match "BadRequest") {
-            Fail 4 @"
+        if ($mpExit -ne 0) {
+            $msg = ($mpRaw | Out-String).Trim()
+            if ($msg -match "was not found" -or $msg -match "BadRequest") {
+                Fail 4 @"
 Marketplace offer 'anthropic/$offer/$plan' not found (family=$family).
 
 Likely causes:
@@ -157,17 +189,18 @@ Available Anthropic agreements on this subscription:
 Underlying error:
 $msg
 "@
-        }
-        Write-Host "Preflight: Marketplace catalog query for '$modelName' returned an unexpected error (continuing — RP will validate at deploy time):" -ForegroundColor Yellow
-        Write-Host "  $msg" -ForegroundColor Yellow
-    } else {
-        $mp = $mpRaw | ConvertFrom-Json
-        if (-not $mp.properties.accepted) {
-            Write-Host "Preflight: '$modelName' marketplace agreement is currently unsigned. The Cognitive Services RP will auto-sign during deployment on eligible subs." -ForegroundColor Yellow
-            Write-Host "         If your subscription blocks RP-initiated subscribes, pre-accept manually:" -ForegroundColor Yellow
-            Write-Host "           az term accept --publisher $publisher --product $offer --plan $plan" -ForegroundColor Yellow
+            }
+            Write-Host "Preflight: Marketplace catalog query for '$modelName' returned an unexpected error (continuing — RP will validate at deploy time):" -ForegroundColor Yellow
+            Write-Host "  $msg" -ForegroundColor Yellow
         } else {
-            Write-Host "Preflight: '$modelName' marketplace agreement signed." -ForegroundColor Green
+            $mp = $mpRaw | ConvertFrom-Json
+            if (-not $mp.properties.accepted) {
+                Write-Host "Preflight: '$modelName' marketplace agreement is currently unsigned. The Cognitive Services RP will auto-sign during deployment on eligible subs." -ForegroundColor Yellow
+                Write-Host "         If your subscription blocks RP-initiated subscribes, pre-accept manually:" -ForegroundColor Yellow
+                Write-Host "           az term accept --publisher $publisher --product $offer --plan $plan" -ForegroundColor Yellow
+            } else {
+                Write-Host "Preflight: '$modelName' marketplace agreement signed." -ForegroundColor Green
+            }
         }
     }
 

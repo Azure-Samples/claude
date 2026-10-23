@@ -212,21 +212,21 @@
         <g transform="translate(20, 44)">
           <rect x="0" y="0" width="462" height="36" rx="8" fill="#FBF0EC"/>
           <use href="#brandClaude" x="4" y="4" width="28" height="28"/>
-          <text x="42" y="23" font-size="14" font-weight="700" fill="#0A2540" font-family="'Cascadia Code', Consolas, monospace">claude-sonnet-4-6</text>
+          <text x="42" y="23" font-size="14" font-weight="700" fill="#0A2540" font-family="'Cascadia Code', Consolas, monospace">claude-sonnet-5-5</text>
           <text x="442" y="23" text-anchor="end" font-size="11" fill="#7E8B9A">balanced &#183; default</text>
         </g>
 
         <g transform="translate(20, 86)">
           <rect x="0" y="0" width="462" height="36" rx="8" fill="#FBF0EC"/>
           <use href="#brandClaude" x="4" y="4" width="28" height="28"/>
-          <text x="42" y="23" font-size="14" font-weight="700" fill="#0A2540" font-family="'Cascadia Code', Consolas, monospace">claude-haiku-4-5</text>
+          <text x="42" y="23" font-size="14" font-weight="700" fill="#0A2540" font-family="'Cascadia Code', Consolas, monospace">claude-haiku-5-5</text>
           <text x="442" y="23" text-anchor="end" font-size="11" fill="#7E8B9A">fast &#183; cheap</text>
         </g>
 
         <g transform="translate(20, 128)">
           <rect x="0" y="0" width="462" height="36" rx="8" fill="#FBF0EC"/>
           <use href="#brandClaude" x="4" y="4" width="28" height="28"/>
-          <text x="42" y="23" font-size="14" font-weight="700" fill="#0A2540" font-family="'Cascadia Code', Consolas, monospace">claude-opus-4-8</text>
+          <text x="42" y="23" font-size="14" font-weight="700" fill="#0A2540" font-family="'Cascadia Code', Consolas, monospace">claude-opus-5-5</text>
           <text x="442" y="23" text-anchor="end" font-size="11" fill="#7E8B9A">deepest reasoning</text>
         </g>
       </g>

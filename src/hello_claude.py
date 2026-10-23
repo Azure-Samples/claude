@@ -4,9 +4,9 @@ Reads configuration from environment (or .env / .env.local):
     CLAUDE_BASE_URL          e.g. https://<resource>.services.ai.azure.com/anthropic
     CLAUDE_DEPLOYMENT_NAME   the Foundry deployment name (NOT the model id)
 
-Auth: Microsoft Entra ID via DefaultAzureCredential. Run `az login` first.
-The token is captured once at startup and is valid for ~1 hour — fine for a
-one-shot script. For long-running processes, see hello_claude_token_refresh.py.
+Auth: Microsoft Entra ID via DefaultAzureCredential. Run `az login` or
+`azd auth login` first. Tokens are cached and refreshed before expiry.
+Set AZURE_TENANT_ID when the deployment lives in a non-default tenant.
 """
 
 from __future__ import annotations
@@ -14,9 +14,9 @@ from __future__ import annotations
 import os
 import sys
 
-from anthropic import Anthropic
-from azure.identity import DefaultAzureCredential
 from dotenv import load_dotenv
+
+from claude_auth import create_foundry_client
 
 
 def main() -> int:
@@ -34,11 +34,7 @@ def main() -> int:
         )
         return 1
 
-    token = DefaultAzureCredential().get_token(
-        "https://ai.azure.com/.default"
-    ).token
-
-    client = Anthropic(auth_token=token, base_url=base_url)
+    client = create_foundry_client(base_url)
 
     message = client.messages.create(
         model=deployment,
@@ -48,8 +44,18 @@ def main() -> int:
         ],
     )
 
+    has_text = False
     for block in message.content:
-        print(block.text)
+        if block.type == "text" and block.text.strip():
+            print(block.text)
+            has_text = True
+    if not has_text:
+        print(
+            f"No text response (stop_reason={message.stop_reason}). "
+            "Increase max_tokens if the response exhausted its budget.",
+            file=sys.stderr,
+        )
+        return 1
 
     print(f"\n[usage] input={message.usage.input_tokens} output={message.usage.output_tokens}")
     return 0
