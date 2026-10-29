@@ -64,7 +64,8 @@ Summarize what was deployed or changed, the resulting endpoint, and any manual f
 ## Rules
 
 - Follow the skill instructions precisely. Don't invent `azd` env vars, regions, or CLI flags.
-- **Passwordless only.** Microsoft Entra ID via `DefaultAzureCredential` / `az login`. Never write `CLAUDE_API_KEY`, subscription IDs, tenant IDs, or tokens into any tracked file.
+- **Standard SDK clients only.** Use generic client/authentication helpers returning ordinary SDK clients, not platform-specific client imports or SDK subclasses. Claude Code's built-in Foundry mode is separate.
+- **Passwordless by default.** Select explicit Azure CLI, azd, or managed-identity credentials. Keys for native-provider/resource-key samples belong only in process env or secret storage. Never write real keys, subscription IDs, tenant IDs, or tokens into tracked files.
 - **Confirm before destructive actions** (`azd down`, `az cognitiveservices account purge`, `az role assignment delete`, deleting `.azure-cli/`, editing `~/.claude/settings.json`). State exactly what will be deleted and get explicit user confirmation. Never pass `--no-prompt` to skip hooks.
 - **Don't mix variants** in the same `azd env`. Use a separate env per Bicep / Terraform / region combination.
 - **Industry must be lowercase.** `technology`, `finance`, `healthcare`, `education`, `retail`, `manufacturing`, `government`, `media`, `other`.

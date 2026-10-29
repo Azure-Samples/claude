@@ -53,6 +53,13 @@ The tests use mock HTTP transports and a fake Azure CLI; no Azure login,
 deployment, API keys, or model quota is needed. PowerShell 7 is required for
 the catalog and preflight tests. The SDK 2.x tests use its `httpx2` transport.
 
+The [language samples](samples/README.md) each document their own offline build
+and test commands. CI runs all seven SDK paths without cloud credentials.
+Keep helpers generic and return standard Anthropic clients; do not introduce
+platform-specific clients, custom token caches, or SDK retry implementations.
+Live tests use the existing `azd up` deployment in one selected IaC variant;
+keep real endpoint/account values and results in gitignored local files.
+
 ## Trademark notice
 
 This project may contain trademarks or logos for projects, products, or services. Authorized use of Microsoft

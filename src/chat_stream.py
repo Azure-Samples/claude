@@ -6,14 +6,12 @@ including during long-running chat sessions.
 
 from __future__ import annotations
 
-import os
 import sys
 
-from anthropic import AnthropicFoundry
+from anthropic import Anthropic
 from anthropic.types import MessageParam
-from dotenv import load_dotenv
 
-from claude_auth import create_foundry_client
+from sample_client import configured_client
 
 
 SYSTEM_PROMPT = (
@@ -21,26 +19,8 @@ SYSTEM_PROMPT = (
 )
 
 
-def build_client() -> tuple[AnthropicFoundry, str]:
-    load_dotenv(".env.local", override=False)
-    load_dotenv(".env", override=False)
-
-    base_url = os.environ.get("CLAUDE_BASE_URL")
-    deployment = os.environ.get("CLAUDE_DEPLOYMENT_NAME")
-    if not base_url or not deployment:
-        print(
-            "Set CLAUDE_BASE_URL and CLAUDE_DEPLOYMENT_NAME (see .env.sample).",
-            file=sys.stderr,
-        )
-        sys.exit(1)
-
-    return create_foundry_client(base_url), deployment
-
-
-def main() -> None:
-    client, deployment = build_client()
+def _chat(client: Anthropic, deployment: str) -> None:
     history: list[MessageParam] = []
-
     print(f"Connected to {deployment}. Type 'exit' to quit.\n")
     while True:
         try:
@@ -54,7 +34,6 @@ def main() -> None:
             return
 
         history.append({"role": "user", "content": user})
-
         print("claude> ", end="", flush=True)
         assistant_text = ""
         with client.messages.stream(
@@ -66,7 +45,8 @@ def main() -> None:
             for text in stream.text_stream:
                 assistant_text += text
                 print(text, end="", flush=True)
-        print("\n")
+        print()
+        print()
         if not assistant_text.strip():
             raise RuntimeError(
                 "No text response. Increase max_tokens if the response exhausted its budget."
@@ -74,5 +54,15 @@ def main() -> None:
         history.append({"role": "assistant", "content": assistant_text})
 
 
+def main() -> int:
+    try:
+        with configured_client() as (client, deployment):
+            _chat(client, deployment)
+    except ValueError as error:
+        print(str(error), file=sys.stderr)
+        return 1
+    return 0
+
+
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())
