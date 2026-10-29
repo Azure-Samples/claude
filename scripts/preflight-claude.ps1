@@ -23,13 +23,15 @@
     falls back to CLAUDE_MODEL_NAME (legacy single-model behavior).
 
     Env vars consumed:
-      CLAUDE_ORGANIZATION_NAME, AZURE_LOCATION, CLAUDE_HAIKU_MODEL,
+      INDUSTRY (or legacy CLAUDE_INDUSTRY), CLAUDE_ORGANIZATION_NAME,
+      AZURE_LOCATION, CLAUDE_HAIKU_MODEL,
       CLAUDE_SONNET_MODEL, CLAUDE_OPUS_MODEL (+ matching *_CAPACITY),
       CLAUDE_MODEL_NAME, CLAUDE_MODEL_CAPACITY (legacy fallback).
 
 .NOTES
     Exit codes:
       0  Preflight passed (or skipped — see warnings).
+      1  Missing/invalid Industry, canceled prompt, or azd env save failed.
       4  Model or Marketplace offer not found (typo in a model name, or model not
          in the Anthropic-on-Foundry catalog yet).
       6  Insufficient quota (Terraform variant only; on Bicep this is a
@@ -48,7 +50,9 @@
 #>
 
 [CmdletBinding()]
-param()
+param(
+    [switch] $IndustryOnly
+)
 
 $ErrorActionPreference = "Stop"
 
@@ -80,7 +84,62 @@ if (Test-Path $azureYaml) {
     elseif ($yaml -match '(?m)^\s*provider:\s*terraform')   { $variant = 'terraform' }
 }
 
-# --- 1. Required env vars ---------------------------------------------------
+# --- 1. Required Industry attestation --------------------------------------
+# Published values: https://learn.microsoft.com/azure/developer/ai/how-to/deploy-claude-foundry#configure-required-deployment-values
+$industries = @(
+    'technology', 'finance', 'healthcare', 'education', 'retail',
+    'manufacturing', 'government', 'media', 'other'
+)
+$industry = $env:INDUSTRY
+$saveIndustry = $false
+if ([string]::IsNullOrWhiteSpace($industry)) {
+    $industry = $env:CLAUDE_INDUSTRY
+    $saveIndustry = $true
+}
+if ([string]::IsNullOrWhiteSpace($industry)) {
+    if ($env:CI -and $env:CI -notmatch '^(0|false)$') {
+        Fail 1 "INDUSTRY is required. Set it before CI runs: azd env set INDUSTRY <value>. Valid values: $($industries -join ', ')."
+    }
+    Write-Host "Anthropic requires your organization's Industry (no default):"
+    for ($i = 0; $i -lt $industries.Count; $i++) {
+        Write-Host ("  {0}. {1}" -f ($i + 1), $industries[$i])
+    }
+    try {
+        $choice = Read-Host 'Select an Industry number or enter its lowercase value'
+    } catch [System.Management.Automation.PSInvalidOperationException] {
+        Fail 1 "Cannot prompt for INDUSTRY in this shell. Set it first: azd env set INDUSTRY <value>."
+    }
+    if ([string]::IsNullOrWhiteSpace($choice)) {
+        Fail 1 "Industry selection canceled. Set it first: azd env set INDUSTRY <value>."
+    }
+    $choice = $choice.Trim()
+    if ($choice -match '^[1-9]$') {
+        $industry = $industries[[int]$choice - 1]
+    } else {
+        $industry = $choice
+    }
+}
+if ($industries -cnotcontains $industry) {
+    Fail 1 "Invalid INDUSTRY '$industry'. Choose one of: $($industries -join ', ') (lowercase)."
+}
+if ($saveIndustry) {
+    if (-not (Get-Command azd -ErrorAction SilentlyContinue)) {
+        Fail 1 "Cannot save INDUSTRY: azd is not on PATH. Install azd and rerun from the selected variant folder."
+    }
+    & azd env set INDUSTRY $industry
+    if ($LASTEXITCODE -ne 0) {
+        Fail 1 "Could not save INDUSTRY to the selected azd environment."
+    }
+}
+$env:INDUSTRY = $industry
+if ($env:CLAUDE_INDUSTRY -and $env:CLAUDE_INDUSTRY -cne $industry) {
+    Warn "INDUSTRY overrides legacy CLAUDE_INDUSTRY. Update or remove the legacy value to avoid ambiguity."
+}
+if ($IndustryOnly) {
+    exit 0
+}
+
+# --- Other required env vars -----------------------------------------------
 if (-not $env:CLAUDE_ORGANIZATION_NAME) {
     Warn "CLAUDE_ORGANIZATION_NAME is not set. azd will prompt for the 'claudeOrganizationName' Bicep parameter at provision time. To skip the prompt: azd env set CLAUDE_ORGANIZATION_NAME 'Your Org'"
 }

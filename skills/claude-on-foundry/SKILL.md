@@ -64,9 +64,9 @@ The most common failures come from skipping these four checks. Walk through them
 4. **Attestation fields.** These are sent to Anthropic on every request and are part of accepting their commercial terms — get them right:
    - `CLAUDE_ORGANIZATION_NAME` — the customer's legal entity name (no default).
    - `CLAUDE_COUNTRY_CODE` — ISO-2, default `US`.
-   - `CLAUDE_INDUSTRY` — **lowercase only**: `technology` | `finance` | `healthcare` | `education` | `retail` | `manufacturing` | `government` | `media` | `other`.
+   - `INDUSTRY` — **required, no default; lowercase only**: `technology` | `finance` | `healthcare` | `education` | `retail` | `manufacturing` | `government` | `media` | `other`, per the [official guide](https://learn.microsoft.com/azure/developer/ai/how-to/deploy-claude-foundry#configure-required-deployment-values). `preup` prompts once and saves it before required template inputs are resolved. Existing `CLAUDE_INDUSTRY` values migrate automatically.
 
-   If `CLAUDE_INDUSTRY` is uppercase or unknown, deployment fails with `AnthropicOrganizationCreationException` — easy to miss because it looks like a transient error.
+   The hook rejects uppercase or unknown values before provisioning. Set `INDUSTRY` in advance for CI; no prompt occurs when a valid value is already configured.
 
 ---
 
@@ -79,6 +79,7 @@ cd infra-bicep   # or: cd infra-terraform
 azd auth login                          # add --tenant-id <id> if needed
 azd env new <name>                      # one env per region + variant combination
 azd env set CLAUDE_ORGANIZATION_NAME "<legal-entity>"
+azd env set INDUSTRY "<documented-lowercase-value>" # or choose once during azd up
 azd env set AZURE_LOCATION "eastus2"
 
 # Pick families — comment out any line to skip that family.
@@ -92,7 +93,9 @@ azd env set CLAUDE_CODE_AUTO_INSTALL true
 azd up
 ```
 
-The `preprovision` hook runs `scripts/preflight-claude.ps1` automatically. It is **best-effort**: it warns and continues when `CLAUDE_ORGANIZATION_NAME` / `AZURE_LOCATION` aren't set (azd / Bicep will prompt) or when `az` isn't installed / logged in (the RP will surface any errors at deploy time). It still **hard-fails** on a missing offer in the Anthropic catalog (exit 4) when that check can run — that's the case that turns into an opaque deploy failure otherwise. The quota check is a **hard fail on Terraform** (because `azapi_resource` swallows quota into the opaque `715-123420`) and a **warning on Bicep** (because azd's own ARM preflight already prints `InsufficientQuota` and prompts to continue). Never suggest bypassing the preflight.
+The `preup` hook runs the preflight script's Industry-only mode before azd resolves required template inputs: it prompts once and saves `INDUSTRY`, migrates an existing `CLAUDE_INDUSTRY`, or fails explicitly in CI when absent/invalid. For standalone `azd provision`, preconfigure `INDUSTRY` first.
+
+The `preprovision` hook revalidates Industry and runs the catalog/quota checks. Those checks remain **best-effort**: the hook warns and continues when `CLAUDE_ORGANIZATION_NAME` / `AZURE_LOCATION` aren't set (azd / Bicep will prompt) or when `az` isn't installed / logged in (the RP will surface any errors at deploy time). It still **hard-fails** on a missing offer in the Anthropic catalog (exit 4) when that check can run — that's the case that turns into an opaque deploy failure otherwise. The quota check is a **hard fail on Terraform** (because `azapi_resource` swallows quota into the opaque `715-123420`) and a **warning on Bicep** (because azd's own ARM preflight already prints `InsufficientQuota` and prompts to continue). Never suggest bypassing the preflight.
 
 The `postprovision` hook runs `scripts/configure-claude-code.ps1` to wire up Claude Code. The customer can re-run it any time without re-deploying:
 ```powershell
@@ -111,7 +114,7 @@ Match the customer's exact error string to a row. Verify the diagnostic command 
 
 | Error fingerprint | Root cause | Diagnostic | Fix |
 |---|---|---|---|
-| `AnthropicOrganizationCreationException` / `AnthropicOrganizationCreationFailed` | One of the three attestation fields is missing or `CLAUDE_INDUSTRY` is uppercase. | `azd env get-values \| Select-String CLAUDE_ORGANIZATION_NAME, CLAUDE_COUNTRY_CODE, CLAUDE_INDUSTRY` | `azd env set CLAUDE_INDUSTRY technology` (lowercase). Re-run `azd up`. |
+| `AnthropicOrganizationCreationException` / `AnthropicOrganizationCreationFailed` | An attestation field is missing or malformed. | `azd env get-values \| Select-String CLAUDE_ORGANIZATION_NAME, CLAUDE_COUNTRY_CODE, INDUSTRY` | Set your actual lowercase Industry with `azd env set INDUSTRY <value>`. Re-run `azd up`. |
 | `Project can only be created under AIServices Kind account with allowProjectManagement set to true` | Account property got downgraded. | Check the IaC didn't get edited to remove `allowProjectManagement`. | Restore the template; re-deploy. |
 | `Marketplace offer ... not found` (from preflight, exit 4) | `CLAUDE_*_MODEL` value is misspelled or that SKU isn't in the catalog. | `./Get-ClaudeCatalog.ps1` and grep the family. | Set `CLAUDE_<FAMILY>_MODEL` to a name from the catalog. |
 | `Quota insufficient` (from preflight, exit 6) | Requested capacity + existing usage > per-region limit. | `az cognitiveservices usage list -l <region> --query "[?contains(name.value,'claude-')]"` | Lower `CLAUDE_<FAMILY>_CAPACITY`, free quota (see soft-delete row), or request a quota bump in the Foundry portal. |

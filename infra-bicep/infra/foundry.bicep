@@ -19,6 +19,18 @@ param modelVersion string
 
 param claudeOrganizationName string
 param claudeCountryCode string
+@description('Required Anthropic industry attestation. Use a lowercase value from the documented Foundry industry list.')
+@allowed([
+  'technology'
+  'finance'
+  'healthcare'
+  'education'
+  'retail'
+  'manufacturing'
+  'government'
+  'media'
+  'other'
+])
 param claudeIndustry string
 param principalId string
 param assignRbac string
