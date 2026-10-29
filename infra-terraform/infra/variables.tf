@@ -121,14 +121,13 @@ variable "claude_country_code" {
 }
 
 variable "claude_industry" {
-  description = "Industry — MUST be lowercase to match Foundry portal dropdown."
+  description = "Required Anthropic industry attestation (INDUSTRY). Supported lowercase values: https://learn.microsoft.com/azure/developer/ai/how-to/deploy-claude-foundry#configure-required-deployment-values"
   type        = string
-  default     = "technology"
   validation {
     condition = contains([
       "technology", "finance", "healthcare", "education",
       "retail", "manufacturing", "government", "media", "other",
     ], var.claude_industry)
-    error_message = "industry must be a lowercase value supported by the Foundry portal."
+    error_message = "INDUSTRY must be technology, finance, healthcare, education, retail, manufacturing, government, media, or other (lowercase)."
   }
 }

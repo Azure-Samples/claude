@@ -20,6 +20,7 @@
 #
 # Exit codes:
 #   0  Preflight passed (or skipped — see warnings).
+#   1  Missing/invalid Industry, canceled prompt, or azd env save failed.
 #   4  Marketplace offer not found.
 #   6  Insufficient quota (Terraform variant only; on Bicep this is a
 #      warning because azd's own ARM preflight already surfaces it).
@@ -47,6 +48,13 @@ warn() {
     printf 'Preflight: %s\n' "$*" >&2
 }
 
+industry_only=0
+if [[ $# -gt 0 ]]; then
+    [[ $# -eq 1 && "$1" = "--industry-only" ]] ||
+        fail 1 "Unknown argument. Use --industry-only to collect attestation before azd up."
+    industry_only=1
+fi
+
 # Detect which IaC variant the preprovision hook is running under. The hook
 # always fires from inside the variant folder (infra-bicep/ or
 # infra-terraform/), so the local azure.yaml tells us which provider azd is
@@ -65,7 +73,53 @@ if [ -f "./azure.yaml" ]; then
     fi
 fi
 
-# --- 1. Required env vars ---------------------------------------------------
+# --- 1. Required Industry attestation --------------------------------------
+# Published values: https://learn.microsoft.com/azure/developer/ai/how-to/deploy-claude-foundry#configure-required-deployment-values
+INDUSTRIES=(technology finance healthcare education retail manufacturing government media other)
+industry="${INDUSTRY:-}"
+save_industry=0
+if [[ -z "${industry//[[:space:]]/}" ]]; then
+    industry="${CLAUDE_INDUSTRY:-}"
+    save_industry=1
+fi
+if [[ -z "${industry//[[:space:]]/}" ]]; then
+    if [[ ! -t 0 || ( -n "${CI:-}" && ! "${CI:-}" =~ ^(0|[Ff][Aa][Ll][Ss][Ee])$ ) ]]; then
+        fail 1 "INDUSTRY is required. Set it before running non-interactively: azd env set INDUSTRY <value>. Valid values: ${INDUSTRIES[*]}."
+    fi
+    printf "Anthropic requires your organization's Industry (no default):\n"
+    for i in "${!INDUSTRIES[@]}"; do
+        printf '  %s. %s\n' "$((i + 1))" "${INDUSTRIES[$i]}"
+    done
+    read -r -p 'Select an Industry number or enter its lowercase value: ' choice ||
+        fail 1 "Industry selection canceled. Set it first: azd env set INDUSTRY <value>."
+    if [[ "$choice" =~ ^[1-9]$ ]]; then
+        industry="${INDUSTRIES[$((choice - 1))]}"
+    else
+        industry="$choice"
+    fi
+fi
+valid_industry=0
+for value in "${INDUSTRIES[@]}"; do
+    if [[ "$value" = "$industry" ]]; then valid_industry=1; break; fi
+done
+if [[ "$valid_industry" -ne 1 ]]; then
+    fail 1 "Invalid INDUSTRY '$industry'. Choose one of: ${INDUSTRIES[*]} (lowercase)."
+fi
+if [[ "$save_industry" -eq 1 ]]; then
+    command -v azd >/dev/null 2>&1 ||
+        fail 1 "Cannot save INDUSTRY: azd is not on PATH. Install azd and rerun from the selected variant folder."
+    azd env set INDUSTRY "$industry" ||
+        fail 1 "Could not save INDUSTRY to the selected azd environment."
+fi
+export INDUSTRY="$industry"
+if [[ -n "${CLAUDE_INDUSTRY:-}" && "$CLAUDE_INDUSTRY" != "$industry" ]]; then
+    warn "INDUSTRY overrides legacy CLAUDE_INDUSTRY. Update or remove the legacy value to avoid ambiguity."
+fi
+if [[ "$industry_only" -eq 1 ]]; then
+    exit 0
+fi
+
+# --- Other required env vars -----------------------------------------------
 if [ -z "${CLAUDE_ORGANIZATION_NAME:-}" ]; then
     warn "CLAUDE_ORGANIZATION_NAME is not set. azd will prompt for the 'claudeOrganizationName' Bicep parameter at provision time. To skip the prompt: azd env set CLAUDE_ORGANIZATION_NAME 'Your Org'"
 fi

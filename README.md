@@ -31,7 +31,7 @@ Current examples use **Claude Sonnet 5.5, Haiku 5.5, and Opus 5.5**. Verify mode
 ![Architecture: azd up provisions a Foundry account, project, and Claude deployments; the postprovision hook configures the local workspace so the Python SDK and Claude Code CLI both call the deployment via Entra ID.](./docs/img/architecture.png)
 
 > [!IMPORTANT]
-> By running `azd up` you accept Anthropic's commercial terms for Claude. Three short attestation fields (`CLAUDE_ORGANIZATION_NAME`, `CLAUDE_COUNTRY_CODE`, `CLAUDE_INDUSTRY`) are sent to Anthropic with every request and must match your real organization. **[Read the Terms of use](#terms-of-use) before you deploy.**
+> By running `azd up` you accept Anthropic's commercial terms for Claude. Three short attestation fields (`CLAUDE_ORGANIZATION_NAME`, `CLAUDE_COUNTRY_CODE`, `INDUSTRY`) accompany each model deployment and must match your real organization. **[Read the Terms of use](#terms-of-use) before you deploy.**
 
 <details id="terms-of-use">
 <summary><strong>Important &mdash; please read: Terms of use</strong></summary>
@@ -46,9 +46,9 @@ The Terraform and Bicep in this template both send a `modelProviderData` block (
 2. **Update the three attestation fields so they accurately describe your organization** &mdash; see the highlighted rows in [All configuration variables](#all-configuration-variables):
    - `CLAUDE_ORGANIZATION_NAME` (no default &mdash; required)
    - `CLAUDE_COUNTRY_CODE` (default `US`)
-   - `CLAUDE_INDUSTRY` (default `technology`)
+   - `INDUSTRY` (required; no default)
 
-   These values are sent to Anthropic on every request and are part of your acceptance &mdash; they should match the real legal entity, country of operation, and industry that will use the model.
+   These values accompany each deployment as part of your acceptance &mdash; they should match the real legal entity, country of operation, and industry that will use the model.
 3. Confirm your Azure subscription is [eligible to deploy Anthropic models in Foundry](https://learn.microsoft.com/azure/ai-foundry/foundry-models/how-to/use-foundry-models-claude#prerequisites).
 
 <details>
@@ -101,7 +101,9 @@ azd env set CLAUDE_SONNET_MODEL "claude-sonnet-5-5"
 azd up
 ```
 
-That's it. To deploy other families, tweak capacity, or change attestation, see [Choosing which models to deploy](#choosing-which-models-to-deploy) and [All configuration variables](#all-configuration-variables) in Advanced.
+The `preup` hook prompts for your Industry once and saves it before `azd up` resolves required template inputs. To preconfigure it (including in CI or before standalone `azd provision`), run `azd env set INDUSTRY technology`, replacing the example with your organization's actual industry. Existing `CLAUDE_INDUSTRY` settings are migrated without another prompt.
+
+To deploy other families, tweak capacity, or change attestation, see [Choosing which models to deploy](#choosing-which-models-to-deploy) and [All configuration variables](#all-configuration-variables) in Advanced.
 
 <details>
 <summary><strong>Zero-touch in GitHub Codespaces</strong> &mdash; no local install, runs in your browser</summary>
@@ -147,7 +149,7 @@ This repo ships an open [Agent Skills](https://agentskills.io/) playbook. Any as
 That's the full one-shot &mdash; just swap the bolded values to suit you. Optional additions:
 
 - *"&hellip;also deploy **haiku** and **opus**"* &mdash; multi-family deployment in one shot.
-- *"&hellip;country **GB**, industry **finance**"* &mdash; if your org isn't US tech (defaults are `US` / `technology`).
+- *"&hellip;country **GB**, industry **finance**"* &mdash; country defaults to `US`; Industry must be selected explicitly.
 - *"&hellip;with **`ASSIGN_RBAC=true`**"* &mdash; also grant yourself the least-privilege inference role.
 - *"&hellip;install Claude Code automatically"* &mdash; sets `CLAUDE_CODE_AUTO_INSTALL=true`.
 
@@ -326,7 +328,8 @@ Rows marked **Attest** below are the three `modelProviderData` fields sent to An
 |---|---|---|---|
 | `CLAUDE_ORGANIZATION_NAME` | **Attest** (yes) | &mdash; | **Legal entity name** sent to Anthropic via `modelProviderData`. |
 | `CLAUDE_COUNTRY_CODE` | **Attest** | `US` | 2-letter ISO. Country your organization operates from. |
-| `CLAUDE_INDUSTRY` | **Attest** | `technology` | **lowercase**: `technology`, `finance`, `healthcare`, `education`, `retail`, `manufacturing`, `government`, `media`, `other` |
+| `INDUSTRY` | **Attest** (yes) | &mdash; | Prompted once and saved by `preup`, then validated again by `preprovision`. Must match a documented lowercase Industry value. |
+| `CLAUDE_INDUSTRY` | legacy alias | &mdash; | Existing values are migrated to `INDUSTRY` without prompting. An explicit `INDUSTRY` takes precedence. |
 | `AZURE_LOCATION` | yes | &mdash; | `eastus2` / `swedencentral` (all 3 families) / `westus2` (sonnet + opus) |
 | `CLAUDE_HAIKU_MODEL` | no | *(empty)* | Haiku family model id (e.g. `claude-haiku-5-5`). Empty = skip. |
 | `CLAUDE_SONNET_MODEL` | no | *(empty)* | Sonnet family model id (e.g. `claude-sonnet-5-5`). Empty = skip. |
@@ -341,6 +344,17 @@ Rows marked **Attest** below are the three `modelProviderData` fields sent to An
 | `ASSIGN_RBAC` | no | `false` | `true` to grant `Cognitive Services User` (least-privilege inference role) on the Foundry account to `AZURE_PRINCIPAL_ID` (needs `roleAssignments/write`) |
 | `CLAUDE_CODE_AUTO_INSTALL` | no | `false` | `true` to let the postprovision hook run the official Claude Code installer ([`install.ps1`](https://claude.ai/install.ps1) / [`install.sh`](https://claude.ai/install.sh)) when `claude` isn't already on PATH |
 | `CLAUDE_WRITE_VSCODE_SETTINGS` | no | `false` | `true` to opt in to having the postprovision hook write `.vscode/settings.json` for the [Claude Code VS Code extension](https://marketplace.visualstudio.com/items?itemName=anthropic.claude-code). Default skips it &mdash; the CLI / SDK don't need workspace settings. |
+
+**Industry attestation.** Anthropic requires your organization's Industry alongside its legal name and country for model-provider onboarding. Both IaC variants send it as **`properties.modelProviderData.industry`**, next to `organizationName` and `countryCode`; it is not a tag or an SDK authentication setting.
+
+The [official deployment guide](https://learn.microsoft.com/azure/developer/ai/how-to/deploy-claude-foundry#configure-required-deployment-values) publishes these lowercase values: `technology`, `finance`, `healthcare`, `education`, `retail`, `manufacturing`, `government`, `media`, `other`. The `preup` hook presents the same list as a numbered menu and accepts a number or exact value:
+
+```powershell
+azd env set INDUSTRY finance   # example only; choose your organization's actual industry
+azd up
+```
+
+Run these commands from your chosen variant folder. A configured value skips the menu, so CI can remain non-interactive; a missing or invalid value fails with a configuration message rather than silently attesting `technology`. There is no assumed service default (including `NONE`). Existing environments with `CLAUDE_INDUSTRY` keep their choice; only the canonical env key is added. No portal action is required.
 
 </details>
 
@@ -575,6 +589,7 @@ What the preflight does, and does not, do:
 
 | Check | Behavior |
 |---|---|
+| `INDUSTRY` | Required. `preup` collects and saves the documented choice before template input resolution; `preprovision` revalidates it. Existing legacy values are migrated; invalid values or a missing value in CI fail with exit 1. |
 | `CLAUDE_ORGANIZATION_NAME` / `AZURE_LOCATION` set | Warns if missing; skips region-dependent checks when no location is set so azd can prompt. Missing Azure CLI/login also produces a warning. |
 | Claude 5.5 model and public Marketplace offer | Checks the regional model catalog and the public `claude-<family>-5-5-offer` listing without sending Azure credentials. Missing models/offers hard-fail with exit 4. The `-fast` variant has no standalone offer; its regional catalog entry is checked and the RP validates applicable terms. |
 | Legacy Marketplace offer/plan resolves | Hard fail (exit 4) on "offer not found", using legacy `anthropic-<model-name>-offer` / `anthropic-<model-name>-plan-new` IDs. |
@@ -682,7 +697,9 @@ az cognitiveservices usage list -l <region> --query "[?contains(name.value,'clau
 <details>
 <summary><strong>Why <code>modelProviderData</code> matters</strong></summary>
 
-Claude deployments fail with `AnthropicOrganizationCreationException` if `modelProviderData` is missing. **`industry` must be lowercase** to match the Foundry portal dropdown.
+Claude deployments fail with `AnthropicOrganizationCreationException` if `modelProviderData` is missing. **`industry` must be a documented lowercase value**. Both variants require it without a default and pass it alongside `organizationName` and `countryCode`.
+
+The public [2025-10-01-preview ARM reference](https://learn.microsoft.com/azure/templates/microsoft.cognitiveservices/2025-10-01-preview/accounts/deployments) does not currently list `modelProviderData`; the field names are documented in the [Microsoft Learn starter sample](https://learn.microsoft.com/samples/azure-samples/claude/claude/) and retained unchanged here. The published Industry list comes from the deployment guide linked above, not an ARM-schema enum.
 
 The Terraform variant uses `azapi_resource` for both the Foundry account and the Claude deployment, because the native `azurerm_cognitive_account` / `azurerm_cognitive_deployment` resources do not yet expose `allowProjectManagement` or `modelProviderData` ([tracked here](https://github.com/hashicorp/terraform-provider-azurerm/issues/31140)). The Bicep variant uses native resources at API version `2025-10-01-preview`, which support both.
 
@@ -693,7 +710,7 @@ The Terraform variant uses `azapi_resource` for both the Foundry account and the
 
 | Symptom | Fix |
 |---|---|
-| `AnthropicOrganizationCreationException` / `AnthropicOrganizationCreationFailed` | `modelProviderData` is missing or malformed. Ensure all three of `organizationName`, `countryCode`, `industry` are set, and that `industry` is lowercase. |
+| `AnthropicOrganizationCreationException` / `AnthropicOrganizationCreationFailed` | `modelProviderData` is missing or malformed. Ensure `organizationName`, `countryCode`, and `industry` are present. Set a documented lowercase Industry with `azd env set INDUSTRY <value>` in the chosen variant folder. |
 | `Project can only be created under AIServices Kind account with allowProjectManagement set to true` | Account property missing. Both variants here set it; check you didn't downgrade the API version. |
 | `404 Not Found` on inference | Base URL must end in `/anthropic` &mdash; `https://<resource>.services.ai.azure.com/anthropic`. |
 | `401 Unauthorized` | Token scope must be `https://ai.azure.com/.default`. Re-run `az login`. |

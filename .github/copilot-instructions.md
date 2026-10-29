@@ -9,7 +9,8 @@ This is the **Claude on Foundry Starter Kit** ([`Azure-Samples/claude`](https://
 - **Two IaC variants ship side-by-side. The user picks ONE.** Never edit or run both.
   - Bicep: [`infra-bicep/`](../infra-bicep) — run `cd infra-bicep && azd up`
   - Terraform: [`infra-terraform/`](../infra-terraform) — run `cd infra-terraform && azd up`
-- **Two hooks fire automatically during `azd up`** (defined in each variant's `azure.yaml`):
+- **Three hooks fire automatically during `azd up`** (defined in each variant's `azure.yaml`):
+  - `preup` → the preflight script's Industry-only mode collects and saves `INDUSTRY` before azd resolves required template inputs.
   - `preprovision` → [`scripts/preflight-claude.ps1`](../scripts/preflight-claude.ps1) / `.sh` — marketplace catalog + quota check, hard-fails early on missing offers or insufficient TPM.
   - `postprovision` → [`scripts/configure-claude-code.ps1`](../scripts/configure-claude-code.ps1) / `.sh` — writes activator files + `.vscode/settings.json` + `.claude/settings.json` so Claude Code and the SDK target the new Foundry deployment via Entra ID.
 - **One canonical catalog tool:** [`./Get-ClaudeCatalog.ps1`](../Get-ClaudeCatalog.ps1). Zero-required-params. Run with `-Latest` for the newest generation per family.
@@ -21,7 +22,8 @@ This is the **Claude on Foundry Starter Kit** ([`Azure-Samples/claude`](https://
 |---|---|---|---|
 | `CLAUDE_ORGANIZATION_NAME` | yes | — | Anthropic attestation (legal entity) |
 | `CLAUDE_COUNTRY_CODE` | attest | `US` | Anthropic attestation (ISO-2) |
-| `CLAUDE_INDUSTRY` | attest | `technology` | Anthropic attestation (**lowercase only**) |
+| `INDUSTRY` | attest (yes) | — | Required Anthropic attestation; `preup` prompts once from the documented lowercase list and saves it before template input resolution |
+| `CLAUDE_INDUSTRY` | legacy alias | — | Migrated to `INDUSTRY` without prompting; explicit `INDUSTRY` takes precedence |
 | `AZURE_LOCATION` | yes | — | `eastus2` / `swedencentral` / `westus2` (opus+sonnet only) |
 | `CLAUDE_HAIKU_MODEL` | no | empty | e.g. `claude-haiku-5-5`. Empty = skip family. |
 | `CLAUDE_SONNET_MODEL` | no | empty | e.g. `claude-sonnet-5-5`. Empty = skip family. |

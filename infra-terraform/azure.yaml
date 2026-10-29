@@ -7,12 +7,28 @@ infra:
   path: infra
   module: main
 hooks:
+  preup:
+    windows:
+      shell: pwsh
+      interactive: true
+      run: pwsh -NoProfile -ExecutionPolicy Bypass -File ../scripts/preflight-claude.ps1 -IndustryOnly
+    posix:
+      shell: sh
+      interactive: true
+      run: |
+        if command -v pwsh >/dev/null 2>&1; then
+          pwsh -NoProfile -File ../scripts/preflight-claude.ps1 -IndustryOnly
+        else
+          bash ../scripts/preflight-claude.sh --industry-only
+        fi
   preprovision:
     windows:
       shell: pwsh
+      interactive: true
       run: pwsh -NoProfile -ExecutionPolicy Bypass -File ../scripts/preflight-claude.ps1
     posix:
       shell: sh
+      interactive: true
       run: |
         if command -v pwsh >/dev/null 2>&1; then
           pwsh -NoProfile -File ../scripts/preflight-claude.ps1

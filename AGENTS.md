@@ -17,11 +17,12 @@ The always-on rules below are the same ones in [`.github/copilot-instructions.md
 - **Two IaC variants ship side by side. The user picks ONE.** Never edit or run both in the same `azd env`.
   - Bicep: [`infra-bicep/`](./infra-bicep/) — run `cd infra-bicep && azd up`
   - Terraform: [`infra-terraform/`](./infra-terraform/) — run `cd infra-terraform && azd up`
-- **Single entrypoint:** `azd up` from inside the chosen variant folder. Two hooks fire automatically:
+- **Single entrypoint:** `azd up` from inside the chosen variant folder. Three hooks fire automatically:
+  - `preup` collects and saves `INDUSTRY` before azd resolves required template inputs.
   - `preprovision` runs [`scripts/preflight-claude.ps1`](./scripts/preflight-claude.ps1) (catalog + quota gate). Never bypass it.
   - `postprovision` runs [`scripts/configure-claude-code.ps1`](./scripts/configure-claude-code.ps1) to wire Claude Code + the SDK to the new deployment.
 - **Configure via `azd env set <KEY> <VALUE>`** from inside the chosen variant folder. There is no `.env` file. See the env-var contract in [`.github/copilot-instructions.md`](.github/copilot-instructions.md).
-- **`CLAUDE_INDUSTRY` must be lowercase**: `technology`, `finance`, `healthcare`, `education`, `retail`, `manufacturing`, `government`, `media`, `other`. Uppercase fails with `AnthropicOrganizationCreationException`.
+- **`INDUSTRY` is required with no default**: `technology`, `finance`, `healthcare`, `education`, `retail`, `manufacturing`, `government`, `media`, `other` (lowercase, per the [official guide](https://learn.microsoft.com/azure/developer/ai/how-to/deploy-claude-foundry#configure-required-deployment-values)). The `preup` hook prompts once and saves it; existing `CLAUDE_INDUSTRY` values migrate without prompting.
 - **Honor the user's region.** `eastus2` and `swedencentral` host all three families; `westus2` is sonnet + opus only. Don't silently change `AZURE_LOCATION`.
 - **Passwordless only.** Microsoft Entra ID via `DefaultAzureCredential` / `az login`. Never write `CLAUDE_API_KEY`, subscription IDs, tenant IDs, or tokens into any tracked file. Real values live in env vars, the gitignored `.env.local`, or the gitignored `.azure-cli/` token cache.
 - **Confirm before destructive actions.** Always get explicit user OK before: `azd down`, `az cognitiveservices account purge`, `az role assignment delete`, deleting `.azure-cli/`, editing `~/.claude/settings.json`. Never pass `--no-prompt` to skip hooks.

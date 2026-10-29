@@ -12,6 +12,11 @@ import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
 PWSH = shutil.which("pwsh")
+BASH = (
+    r"C:\Program Files\Git\bin\bash.exe"
+    if os.name == "nt" and Path(r"C:\Program Files\Git\bin\bash.exe").is_file()
+    else shutil.which("bash")
+)
 
 
 @unittest.skipUnless(PWSH, "PowerShell 7 is required for catalog and preflight tests")
@@ -28,7 +33,13 @@ import os
 import sys
 
 args = sys.argv[1:]
-if args[:2] == ["account", "show"]:
+if args[:3] == ["env", "set", "INDUSTRY"]:
+    if os.environ.get("CLAUDE_TEST_SAVE_FAIL"):
+        print("Fixture azd env save failed", file=sys.stderr)
+        sys.exit(1)
+    with open("industry-saves.jsonl", "a", encoding="utf-8") as saved:
+        saved.write(json.dumps(args[3:]) + "\\n")
+elif args[:2] == ["account", "show"]:
     print(json.dumps({"tenantId": "example-tenant", "name": "Example", "id": "example-sub"}))
 elif args[:3] == ["cognitiveservices", "model", "list"]:
     names = [
@@ -75,20 +86,23 @@ else:
             encoding="utf-8",
         )
         if os.name == "nt":
-            (self.work / "az.cmd").write_text(
-                f'@echo off\n"{sys.executable}" "{fake_cli}" %*\n', encoding="utf-8"
-            )
-        else:
-            wrapper = self.work / "az"
+            for name in ("az", "azd"):
+                (self.work / f"{name}.cmd").write_text(
+                    f'@echo off\n"{sys.executable}" "{fake_cli}" %*\n', encoding="utf-8"
+                )
+        for name in ("az", "azd"):
+            wrapper = self.work / name
             wrapper.write_text(
-                f'#!/bin/sh\nexec "{sys.executable}" "{fake_cli}" "$@"\n',
+                f'#!/bin/sh\nexec "{Path(sys.executable).as_posix()}" "{fake_cli.as_posix()}" "$@"\n',
                 encoding="utf-8",
             )
             wrapper.chmod(0o755)
         self.env = {
             key: value for key, value in os.environ.items()
             if not key.startswith(("CLAUDE_", "ANTHROPIC_", "AZURE_"))
+            and key != "INDUSTRY"
         }
+        self.env["INDUSTRY"] = "technology"
         self.env["PATH"] = str(self.work) + os.pathsep + self.env["PATH"]
 
     def _run(self, command: str) -> subprocess.CompletedProcess[str]:
@@ -101,6 +115,14 @@ function Invoke-RestMethod {
         throw [Microsoft.PowerShell.Commands.HttpResponseException]::new('Marketplace offer not found', $response)
     }
     [pscustomobject]@{ id = 'sample-public-offer' }
+}
+"""
+        if "CLAUDE_TEST_INDUSTRY_CHOICE" in self.env:
+            fake_http += """
+function Read-Host {
+    param([string]$Prompt)
+    Write-Host 'INDUSTRY_PROMPT'
+    return $env:CLAUDE_TEST_INDUSTRY_CHOICE
 }
 """
         return subprocess.run(
@@ -181,11 +203,96 @@ function Invoke-RestMethod {
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         self.assertIn("Preflight WARNING", result.stdout)
 
-    @unittest.skipIf(os.name == "nt", "Bash preflight scenarios run in Linux CI")
+    def test_industry_preconfigured_values_skip_prompt_and_save(self) -> None:
+        for industry in (
+            "technology", "finance", "healthcare", "education", "retail",
+            "manufacturing", "government", "media", "other",
+        ):
+            with self.subTest(industry=industry):
+                self.env.update(INDUSTRY=industry, CI="true")
+                result = self._preflight("bicep", 25)
+                self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+                self.assertNotIn("INDUSTRY_PROMPT", result.stdout)
+        self.assertFalse((self.work / "industry-saves.jsonl").exists())
+
+    def test_industry_missing_in_ci_fails_before_deployment_checks(self) -> None:
+        self.env.pop("INDUSTRY")
+        self.env["CI"] = "true"
+        result = self._preflight("terraform", 25)
+        self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
+        self.assertIn("INDUSTRY is required", result.stdout)
+        self.assertNotIn("marketplace", result.stdout.lower())
+
+    def test_industry_noninteractive_shell_explains_how_to_preconfigure(self) -> None:
+        self.env.pop("INDUSTRY")
+        self.env.pop("CI", None)
+        result = self._preflight("bicep", 25)
+        self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
+        self.assertIn("azd env set INDUSTRY", result.stdout)
+
+    def test_industry_menu_choice_is_saved_once_then_reused(self) -> None:
+        self.env.pop("INDUSTRY")
+        self.env.pop("CI", None)
+        self.env["CLAUDE_TEST_INDUSTRY_CHOICE"] = "2"
+        result = self._preflight("bicep", 25)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertEqual(result.stdout.count("INDUSTRY_PROMPT"), 1)
+        self.assertIn("9. other", result.stdout)
+        saved = self.work / "industry-saves.jsonl"
+        self.assertEqual(saved.read_text(encoding="utf-8").splitlines(), ['["finance"]'])
+        self.env["INDUSTRY"] = "finance"
+        self.env.pop("CLAUDE_TEST_INDUSTRY_CHOICE")
+        result = self._preflight("bicep", 25)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertEqual(len(saved.read_text(encoding="utf-8").splitlines()), 1)
+
+    def test_industry_legacy_environment_migrates_without_prompt(self) -> None:
+        self.env.pop("INDUSTRY")
+        self.env.update(CLAUDE_INDUSTRY="finance", CI="true")
+        result = self._preflight("terraform", 25)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertEqual(
+            (self.work / "industry-saves.jsonl").read_text(encoding="utf-8").splitlines(),
+            ['["finance"]'],
+        )
+
+    def test_industry_explicit_value_wins_over_legacy_with_warning(self) -> None:
+        self.env.update(INDUSTRY="finance", CLAUDE_INDUSTRY="technology")
+        result = self._preflight("bicep", 25)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn("INDUSTRY overrides legacy CLAUDE_INDUSTRY", result.stdout)
+        self.assertFalse((self.work / "industry-saves.jsonl").exists())
+
+    def test_industry_invalid_or_uppercase_value_is_not_silently_replaced(self) -> None:
+        for industry in ("Technology", "NONE", "not-an-industry", " finance "):
+            with self.subTest(industry=industry):
+                self.env.update(INDUSTRY=industry, CLAUDE_INDUSTRY="finance")
+                result = self._preflight("bicep", 25)
+                self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
+                self.assertIn("Invalid INDUSTRY", result.stdout)
+        self.assertFalse((self.work / "industry-saves.jsonl").exists())
+
+    def test_industry_save_failure_is_fatal(self) -> None:
+        self.env.pop("INDUSTRY")
+        self.env.update(CLAUDE_INDUSTRY="finance", CLAUDE_TEST_SAVE_FAIL="1")
+        result = self._preflight("terraform", 25)
+        self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
+        self.assertIn("Could not save INDUSTRY", result.stdout)
+
+    def test_industry_only_mode_does_not_run_deployment_checks(self) -> None:
+        script = str(ROOT / "scripts" / "preflight-claude.ps1").replace("'", "''")
+        self.env.pop("INDUSTRY")
+        self.env.update(CLAUDE_INDUSTRY="finance", CI="true")
+        result = self._run(f"& '{script}' -IndustryOnly; exit $LASTEXITCODE")
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertNotIn("AZURE_LOCATION", result.stdout)
+        self.assertEqual(
+            (self.work / "industry-saves.jsonl").read_text(encoding="utf-8").splitlines(),
+            ['["finance"]'],
+        )
+
+    @unittest.skipUnless(BASH, "Bash is required")
     def test_bash_preflight_preserves_the_same_model_offer_and_quota_gates(self) -> None:
-        bash = shutil.which("bash")
-        if not bash:
-            self.skipTest("Bash is required")
         (self.work / "azure.yaml").write_text(
             "name: sample\ninfra:\n  provider: terraform\n", encoding="utf-8"
         )
@@ -211,13 +318,51 @@ function Invoke-RestMethod {
                 if flag:
                     env[flag] = "1"
                 result = subprocess.run(
-                    [bash, str(ROOT / "scripts" / "preflight-claude.sh")],
+                    [BASH, (ROOT / "scripts" / "preflight-claude.sh").as_posix()],
                     env=env, cwd=self.work, capture_output=True, text=True,
                     encoding="utf-8", timeout=60,
                 )
                 self.assertEqual(
                     result.returncode, expected, result.stdout + result.stderr
                 )
+
+    @unittest.skipUnless(BASH, "Bash is required")
+    def test_bash_industry_required_legacy_validation_and_save_failures(self) -> None:
+        script = (ROOT / "scripts" / "preflight-claude.sh").as_posix()
+        for values, expected, text in (
+            ({"INDUSTRY": "finance", "CI": "true"}, 0, "Skipping marketplace"),
+            ({"CLAUDE_INDUSTRY": "finance", "CI": "true"}, 0, "Skipping marketplace"),
+            ({"CI": "true"}, 1, "INDUSTRY is required"),
+            ({"INDUSTRY": "Technology"}, 1, "Invalid INDUSTRY"),
+            ({"CLAUDE_INDUSTRY": "finance", "CLAUDE_TEST_SAVE_FAIL": "1"}, 1,
+             "Could not save INDUSTRY"),
+        ):
+            with self.subTest(values=values):
+                env = {key: value for key, value in self.env.items() if key != "INDUSTRY"}
+                env.update(values)
+                result = subprocess.run(
+                    [BASH, script], env=env, cwd=self.work, stdin=subprocess.DEVNULL,
+                    capture_output=True, text=True, encoding="utf-8", timeout=60,
+                )
+                self.assertEqual(result.returncode, expected, result.stdout + result.stderr)
+                self.assertIn(text, result.stdout + result.stderr)
+
+    @unittest.skipUnless(BASH, "Bash is required")
+    def test_bash_industry_only_mode_does_not_run_deployment_checks(self) -> None:
+        script = (ROOT / "scripts" / "preflight-claude.sh").as_posix()
+        env = self.env | {"CLAUDE_INDUSTRY": "finance", "CI": "true"}
+        env.pop("INDUSTRY")
+        result = subprocess.run(
+            [BASH, script, "--industry-only"], env=env, cwd=self.work,
+            stdin=subprocess.DEVNULL, capture_output=True, text=True,
+            encoding="utf-8", timeout=60,
+        )
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertNotIn("AZURE_LOCATION", result.stderr)
+        self.assertEqual(
+            (self.work / "industry-saves.jsonl").read_text(encoding="utf-8").splitlines(),
+            ['["finance"]'],
+        )
 
 
 if __name__ == "__main__":

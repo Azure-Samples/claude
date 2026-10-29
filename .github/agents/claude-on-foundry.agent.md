@@ -38,7 +38,7 @@ Translate plain-English requests ("deploy", "it failed", "is it working", "add a
 ### 2. Configure (only what's needed)
 
 1. Set config via `azd env set <KEY> <VALUE>` from inside the chosen variant folder (`infra-bicep/` or `infra-terraform/`).
-2. Required: `CLAUDE_ORGANIZATION_NAME`, `AZURE_LOCATION`. Industry must be lowercase.
+2. Required: `CLAUDE_ORGANIZATION_NAME`, `AZURE_LOCATION`, `INDUSTRY`. Industry has no default: `preup` prompts once from the documented lowercase list and saves it before azd resolves template inputs; legacy `CLAUDE_INDUSTRY` values migrate automatically.
 3. Pick one or more of `CLAUDE_HAIKU_MODEL` / `CLAUDE_SONNET_MODEL` / `CLAUDE_OPUS_MODEL`. Empty = skip.
 
 ### 3. Execute

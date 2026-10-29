@@ -72,7 +72,7 @@ param claudeOrganizationName string
 @minLength(2)
 @maxLength(2)
 param claudeCountryCode string = 'US'
-@description('Industry — MUST be lowercase to match Foundry portal dropdown.')
+@description('Required Anthropic industry attestation (INDUSTRY). Supported lowercase values: https://learn.microsoft.com/azure/developer/ai/how-to/deploy-claude-foundry#configure-required-deployment-values')
 @allowed([
   'technology'
   'finance'
@@ -84,7 +84,7 @@ param claudeCountryCode string = 'US'
   'media'
   'other'
 ])
-param claudeIndustry string = 'technology'
+param claudeIndustry string
 
 var tags = {
   'azd-env-name': environmentName

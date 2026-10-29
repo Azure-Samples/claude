@@ -18,6 +18,6 @@
     "modelCapacity":   { "value": "${CLAUDE_MODEL_CAPACITY=25}" },
     "claudeOrganizationName": { "value": "${CLAUDE_ORGANIZATION_NAME}" },
     "claudeCountryCode":      { "value": "${CLAUDE_COUNTRY_CODE=US}" },
-    "claudeIndustry":         { "value": "${CLAUDE_INDUSTRY=technology}" }
+    "claudeIndustry":         { "value": "${INDUSTRY}" }
   }
 }
