@@ -31,6 +31,7 @@ This is the **Claude on Foundry Starter Kit** ([`Azure-Samples/claude`](https://
 | `CLAUDE_HAIKU_CAPACITY` / `CLAUDE_SONNET_CAPACITY` / `CLAUDE_OPUS_CAPACITY` | no | `25` | TPM ÷ 1000 per family |
 | `CLAUDE_MODEL_NAME` | no | `claude-sonnet-4-6` | **Legacy** single-deployment fallback (only used when all three `CLAUDE_*_MODEL` are empty) |
 | `AZURE_TENANT_ID` | no | credential default | SDK token-request tenant; real IDs belong only in process env or gitignored `.env.local` |
+| `AZURE_TOKEN_CREDENTIALS` | SDK | `AzureCliCredential` | Explicit SDK credential selection; use `AzureDeveloperCliCredential` after azd login or `ManagedIdentityCredential` in hosted workloads |
 | `ASSIGN_RBAC` | no | `false` | `true` grants `Cognitive Services User` (least-privilege inference role) on the Foundry account to `AZURE_PRINCIPAL_ID` |
 | `CLAUDE_CODE_AUTO_INSTALL` | no | `false` | `true` installs the Claude Code CLI in the postprovision hook |
 | `CLAUDE_WRITE_VSCODE_SETTINGS` | no | `false` | `true` opts in to having the postprovision hook write `.vscode/settings.json` for the [Anthropic Claude Code VS Code extension](https://marketplace.visualstudio.com/items?itemName=anthropic.claude-code). Default skips it &mdash; the CLI / SDK don't need workspace settings. |
@@ -51,6 +52,7 @@ Always set vars with `azd env set <VAR> <VALUE>` from inside the chosen variant 
 - **Never mix the Bicep and Terraform variants in one environment.** Each variant uses its own `azd env`. If the user wants to switch, run `azd env new <name>` in the other folder.
 - **Don't suggest disabling RBAC propagation retries.** An intermittent `401 PermissionDenied` immediately after `azd up` with `ASSIGN_RBAC=true` is normal — wait 1-3 minutes.
 - **Honor the user's region.** `eastus2` and `swedencentral` host all three families; `westus2` is sonnet + opus only. Don't silently change `AZURE_LOCATION`.
+- **Use standard Anthropic clients.** The generic helpers in [`src/`](../src/) and [`samples/`](../samples/) accept renewable-token callbacks and return ordinary SDK clients. Do not reintroduce platform-specific client imports or SDK subclasses. Claude Code's separate built-in Foundry mode remains enabled.
 
 ## Style
 

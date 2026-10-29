@@ -40,3 +40,11 @@ local-only/
 # 'az login' / 'azd' done in this workspace never touch ~/.azure and
 # never leak into other VS Code windows. Pure runtime state — do not commit.
 .azure-cli/
+
+# Language sample dependencies and build output
+node_modules/
+**/bin/
+**/obj/
+**/target/
+**/vendor/
+.bundle/

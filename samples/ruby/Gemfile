@@ -1,0 +1,12 @@
+# frozen_string_literal: true
+
+source "https://rubygems.org"
+
+# No `ruby` directive on purpose: the anthropic gem already requires Ruby 3.2 or later, and a directive would write the
+# exact Ruby patch release into Gemfile.lock (a RUBY VERSION line) and rewrite it on every other Ruby.
+gem "anthropic", "~> 2.3.0"
+
+group :test do
+  # 5.x: Minitest 6 needs the prism gem, which compiles a native extension on Rubies that do not bundle it.
+  gem "minitest", "~> 5.25"
+end

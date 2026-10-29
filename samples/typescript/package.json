@@ -1,0 +1,25 @@
+{
+  "name": "anthropic-explicit-auth-sample",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Standard Anthropic TypeScript SDK sample with explicit, renewable authentication.",
+  "type": "module",
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "start": "node src/main.ts",
+    "typecheck": "tsc --noEmit",
+    "pretest": "npm run typecheck",
+    "test": "node --test --test-timeout=60000 \"test/*.test.ts\""
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "1.1.0",
+    "@azure/identity": "4.14.0"
+  },
+  "devDependencies": {
+    "@types/node": "26.6.5",
+    "typescript": "7.0.2"
+  }
+}

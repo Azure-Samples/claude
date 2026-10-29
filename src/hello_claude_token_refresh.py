@@ -1,38 +1,29 @@
 """Long-running Claude-on-Foundry sample with automatic Entra ID token refresh.
 
 Use this pattern for services, daemons, long-running batch jobs, and
-notebooks. AnthropicFoundry invokes an Azure Identity token provider on
+notebooks. A request hook invokes a cached token provider on
 each request. The provider caches the token and refreshes it before expiry.
 The one-shot and streaming samples use the same authentication path.
 """
 
 from __future__ import annotations
 
-import os
 import sys
 
-from dotenv import load_dotenv
-
-from claude_auth import create_foundry_client
+from sample_client import configured_client
 
 
 def main() -> int:
-    load_dotenv(".env.local", override=False)
-    load_dotenv(".env", override=False)
-
-    base_url = os.environ.get("CLAUDE_BASE_URL")
-    deployment = os.environ.get("CLAUDE_DEPLOYMENT_NAME")
-    if not base_url or not deployment:
-        print("Set CLAUDE_BASE_URL and CLAUDE_DEPLOYMENT_NAME.", file=sys.stderr)
+    try:
+        with configured_client() as (client, deployment):
+            msg = client.messages.create(
+                model=deployment,
+                max_tokens=1024,
+                messages=[{"role": "user", "content": "What are 3 things to visit in Seattle?"}],
+            )
+    except ValueError as error:
+        print(str(error), file=sys.stderr)
         return 1
-
-    client = create_foundry_client(base_url)
-
-    msg = client.messages.create(
-        model=deployment,
-        max_tokens=512,
-        messages=[{"role": "user", "content": "What are 3 things to visit in Seattle?"}],
-    )
     has_text = False
     for block in msg.content:
         if block.type == "text" and block.text.strip():

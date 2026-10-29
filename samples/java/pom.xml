@@ -1,0 +1,102 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+
+  <groupId>sample.anthropic</groupId>
+  <artifactId>anthropic-standard-sdk-sample</artifactId>
+  <version>1.0.0</version>
+  <packaging>jar</packaging>
+  <name>Standard Anthropic SDK sample</name>
+  <description>Messages and streaming calls with the standard Anthropic Java client and explicit authentication.</description>
+
+  <properties>
+    <maven.compiler.release>17</maven.compiler.release>
+    <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+    <anthropic.version>3.3.0</anthropic.version>
+    <azure.identity.version>1.18.7</azure.identity.version>
+    <junit.version>5.14.4</junit.version>
+    <!-- Same Jackson line the Anthropic SDK is built against; azure-core would otherwise win with an older one. -->
+    <jackson.version>2.19.4</jackson.version>
+    <exec.mainClass>sample.anthropic.Main</exec.mainClass>
+  </properties>
+
+  <dependencyManagement>
+    <dependencies>
+      <dependency>
+        <groupId>com.fasterxml.jackson</groupId>
+        <artifactId>jackson-bom</artifactId>
+        <version>${jackson.version}</version>
+        <type>pom</type>
+        <scope>import</scope>
+      </dependency>
+    </dependencies>
+  </dependencyManagement>
+
+  <dependencies>
+    <dependency>
+      <groupId>com.anthropic</groupId>
+      <artifactId>anthropic-java</artifactId>
+      <version>${anthropic.version}</version>
+    </dependency>
+    <dependency>
+      <groupId>com.azure</groupId>
+      <artifactId>azure-identity</artifactId>
+      <version>${azure.identity.version}</version>
+    </dependency>
+    <dependency>
+      <groupId>org.junit.jupiter</groupId>
+      <artifactId>junit-jupiter</artifactId>
+      <version>${junit.version}</version>
+      <scope>test</scope>
+    </dependency>
+  </dependencies>
+
+  <build>
+    <plugins>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-compiler-plugin</artifactId>
+        <version>3.14.1</version>
+        <configuration>
+          <compilerArgs>
+            <!-- The test helpers share one file on purpose. -->
+            <arg>-Xlint:all,-auxiliaryclass</arg>
+          </compilerArgs>
+        </configuration>
+      </plugin>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-surefire-plugin</artifactId>
+        <version>3.6.1</version>
+        <configuration>
+          <!-- Hostile ambient configuration for every test: none of it may reach the wire. -->
+          <environmentVariables>
+            <ANTHROPIC_API_KEY>canary-ambient-api-key</ANTHROPIC_API_KEY>
+            <ANTHROPIC_AUTH_TOKEN>canary-ambient-auth-token</ANTHROPIC_AUTH_TOKEN>
+            <ANTHROPIC_BASE_URL>https://canary-ambient-base.invalid</ANTHROPIC_BASE_URL>
+            <ANTHROPIC_PROFILE>canary-ambient-profile</ANTHROPIC_PROFILE>
+            <ANTHROPIC_IDENTITY_TOKEN>canary-ambient-identity-token</ANTHROPIC_IDENTITY_TOKEN>
+            <ANTHROPIC_CUSTOM_HEADERS>x-api-key: canary-ambient-custom-x-api-key&#10;api-key: canary-ambient-custom-api-key</ANTHROPIC_CUSTOM_HEADERS>
+            <!-- Fake az/azd scripts that CredentialSelectorTest writes here win over any installed CLI. -->
+            <PATH>${project.build.directory}${file.separator}fake-cli${path.separator}${env.PATH}</PATH>
+          </environmentVariables>
+          <systemPropertyVariables>
+            <anthropic.apiKey>canary-ambient-property-api-key</anthropic.apiKey>
+            <anthropic.authToken>canary-ambient-property-auth-token</anthropic.authToken>
+            <anthropic.baseUrl>https://canary-ambient-property-base.invalid</anthropic.baseUrl>
+          </systemPropertyVariables>
+        </configuration>
+      </plugin>
+      <plugin>
+        <groupId>org.codehaus.mojo</groupId>
+        <artifactId>exec-maven-plugin</artifactId>
+        <version>3.6.4</version>
+        <configuration>
+          <mainClass>${exec.mainClass}</mainClass>
+        </configuration>
+      </plugin>
+    </plugins>
+  </build>
+</project>

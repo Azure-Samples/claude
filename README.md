@@ -7,12 +7,14 @@ languages:
 - go
 - csharp
 - java
+- php
+- ruby
 products:
 - azure-openai
 - azure
 urlFragment: claude
 name: The Claude on Foundry Starter Kit
-description: Deploy Claude models in Microsoft Foundry using one CLI command with Bicep or Terraform. Includes Anthropic SDK for Python examples using the Messages API. Wires up Claude Code so you can run the agentic CLI against your fresh deployment immediately.
+description: Deploy Claude models in Microsoft Foundry using one CLI command with Bicep or Terraform. Includes standard Anthropic SDK examples in seven languages using the Messages API and generic authentication helpers. Wires up Claude Code against your deployment.
 ---
 -->
 
@@ -194,6 +196,10 @@ azd env get-values | Out-File -Encoding utf8 ..\.env.local
 cd ..
 python -m venv .venv && . .venv/Scripts/Activate.ps1   # macOS/Linux: source .venv/bin/activate
 pip install -r requirements.txt
+# After azd auth login, select its credential explicitly. Alternatively, az login
+# and leave the default AzureCliCredential.
+$env:AZURE_TOKEN_CREDENTIALS = "AzureDeveloperCliCredential"
+# macOS/Linux: export AZURE_TOKEN_CREDENTIALS=AzureDeveloperCliCredential
 python src/hello_claude.py                  # one-shot Messages call (Entra ID)
 python src/chat_stream.py                   # interactive streaming chat &mdash; type a message, `exit` to quit
 python src/hello_claude_token_refresh.py    # long-running variant with per-request token refresh
@@ -202,44 +208,60 @@ python src/hello_claude_token_refresh.py    # long-running variant with per-requ
 <details>
 <summary><strong>SDK call shape</strong> &mdash; the minimal Python snippet and long-running token refresh</summary>
 
-We use the SDK's native `AnthropicFoundry` client with an Azure Identity token provider. Tokens are cached and refreshed before expiry, including in the streaming sample. This avoids platform-specific authentication changes in the generic `Anthropic` client.
+Every sample uses the standard Anthropic client, not a platform-specific client. A small [client factory](./src/client_auth.py) supplies explicit authentication through public HTTP hooks. Azure Identity's [token provider](./src/token_provider.py) caches tokens and refreshes them before expiry, including during streaming sessions.
 
 ```python
-import os
+from azure.identity import AzureCliCredential, get_bearer_token_provider
+from client_auth import create_client
 
-from anthropic import AnthropicFoundry
-from azure.identity import DefaultAzureCredential, get_bearer_token_provider
-
-os.environ.pop("ANTHROPIC_FOUNDRY_RESOURCE", None)
-client = AnthropicFoundry(
-    azure_ad_token_provider=get_bearer_token_provider(
-        DefaultAzureCredential(), "https://ai.azure.com/.default"
-    ),
-    base_url="https://<resource>.services.ai.azure.com/anthropic",
-)
-msg = client.messages.create(
-    model="<deployment-name>",
-    max_tokens=1024,
-    messages=[{"role": "user", "content": "Hi"}],
-)
+with AzureCliCredential() as credential:
+    with create_client(
+        base_url="https://<resource>.services.ai.azure.com/anthropic",
+        token_provider=get_bearer_token_provider(
+            credential, "https://ai.azure.com/.default"
+        ),
+    ) as client:
+        msg = client.messages.create(
+            model="<deployment-name>",
+            max_tokens=1024,
+            messages=[{"role": "user", "content": "Hi"}],
+        )
 ```
 
 > Pass the **deployment name** (not the model id) as `model`. The SDK appends `/v1/messages` to the configured `base_url`.
 
-The samples print only text blocks; Claude 5.5 can also return thinking blocks. An empty text response fails explicitly, with a token-budget hint, instead of reporting success. For a deployment in a non-default tenant, set `AZURE_TENANT_ID` in your process environment or gitignored `.env.local`. The shared [token provider](./src/claude_auth.py) forwards that tenant to the credential's token request, including its Azure CLI and azd authentication paths.
+The samples print only text blocks; Claude 5.5 can also return thinking blocks. An empty text response fails explicitly, with a token-budget hint, instead of reporting success. For a deployment in a non-default tenant, set `AZURE_TENANT_ID` in your process environment or gitignored `.env.local`. The shared [token provider](./src/token_provider.py) forwards that tenant to the credential's token request, including its Azure CLI and azd authentication paths.
 
-The shared client factory clears `ANTHROPIC_FOUNDRY_RESOURCE` only inside the Python process so the explicit `CLAUDE_BASE_URL` wins. This lets the SDK run after sourcing the Claude Code activator without a `base_url and resource are mutually exclusive` error; your parent shell's CLI settings are unchanged.
+The standard client does not consume `ANTHROPIC_FOUNDRY_RESOURCE`. The explicit URL wins without changing the environment, so SDK samples and the Claude Code activator can share a shell. The factory binds credentials to the configured origin, disables automatic redirects, and prevents ambient native credentials from overriding the selected authentication. Native SDK API-version and bearer-key defaults are preserved; legacy header/version overrides remain optional.
 
 <details id="advanced-long-running-processes-auto-refreshing-the-entra-id-token">
 <summary><strong>Long-running processes: auto-refreshing the Entra ID token</strong></summary>
 
-A captured static token eventually expires. [src/hello_claude_token_refresh.py](./src/hello_claude_token_refresh.py) demonstrates `AnthropicFoundry(azure_ad_token_provider=...)` instead: Azure Identity caches the token and refreshes it before expiry. The one-shot and streaming samples use the same provider; no custom SDK `credentials=` adapter or OAuth beta header is needed.
+A captured static token eventually expires. [src/hello_claude_token_refresh.py](./src/hello_claude_token_refresh.py) uses a cached bearer-token callback instead. The standard SDK's request hook asks for the current token on every request and retry; Azure Identity caches and renews it. There is no custom token cache, retry loop, SDK subclass, or automatic native OAuth beta header.
 
 [requirements.txt](./requirements.txt) targets Anthropic SDK **2.1+** and Azure Identity **1.26+**, with upper bounds at the next major version. SDK 2.x uses `httpx2` for custom transports; it is not interchangeable with `httpx`.
 
 </details>
 
 </details>
+
+### Same SDK client, seven languages
+
+| Language | Sample and instructions |
+|---|---|
+| Python | [One-shot](./src/hello_claude.py), [streaming](./src/chat_stream.py), [token refresh](./src/hello_claude_token_refresh.py) |
+| TypeScript | [samples/typescript](./samples/typescript/README.md) |
+| C# | [samples/dotnet](./samples/dotnet/README.md) |
+| Go | [samples/go](./samples/go/README.md) |
+| Java | [samples/java](./samples/java/README.md) |
+| PHP | [samples/php](./samples/php/README.md) |
+| Ruby | [samples/ruby](./samples/ruby/README.md) |
+
+Helpers return ordinary SDK clients; application code still calls the usual Messages and streaming APIs. [Shared configuration](./samples/README.md) selects the endpoint, model, authentication, key header and API version. The same samples can target Anthropic's native endpoint without changing imports or inference code.
+
+Python, TypeScript, C#, Go and Java use their official Azure Identity SDKs. PHP and Ruby accept a token-provider callback and use Azure CLI as a documented local fallback; this is **not** an official Azure Identity SDK for those languages.
+
+Claude Code's built-in Foundry mode below is independent of these SDK samples and remains unchanged.
 
 <details>
 <summary><strong>Claude Code CLI</strong> &mdash; optional agentic CLI against the same deployment</summary>
@@ -714,7 +736,7 @@ The Terraform variant uses `azapi_resource` for both the Foundry account and the
 | `Project can only be created under AIServices Kind account with allowProjectManagement set to true` | Account property missing. Both variants here set it; check you didn't downgrade the API version. |
 | `404 Not Found` on inference | Base URL must end in `/anthropic` &mdash; `https://<resource>.services.ai.azure.com/anthropic`. |
 | `401 Unauthorized` | Token scope must be `https://ai.azure.com/.default`. Re-run `az login`. |
-| `401 Unauthorized` after ~1 hour of running | A captured static token has expired. Use `AnthropicFoundry(azure_ad_token_provider=...)` &mdash; see [long-running processes](#advanced-long-running-processes-auto-refreshing-the-entra-id-token). All Entra ID samples cache and refresh tokens before expiry. |
+| `401 Unauthorized` after ~1 hour of running | A captured static token has expired. Use the [cached token-provider callback](./src/token_provider.py) with the [standard client factory](./src/client_auth.py) &mdash; see [long-running processes](#advanced-long-running-processes-auto-refreshing-the-entra-id-token). |
 | `AttributeError: 'ThinkingBlock' object has no attribute 'text'` | Claude can return thinking or other non-text blocks. Check `block.type == "text"` before reading `block.text`, as the samples do. |
 | `403 Forbidden` | Missing a data-plane role on the Foundry account. Grant `Cognitive Services User`, `Foundry User` (formerly `Azure AI User`), or `Azure AI Developer` (see [Required permissions](#required-permissions)). |
 | `Region not available` | Deploy to `eastus2` or `swedencentral` (or `westus2` for opus-only). |

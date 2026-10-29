@@ -1,0 +1,9 @@
+#!/bin/sh
+# Test double for the Azure CLI. It contacts nothing and prints synthetic data; FAKE_AZ_MODE selects the behavior.
+case "${FAKE_AZ_MODE:-ok}" in
+  fail) exit 3 ;;
+  slow) sleep 7; printf '%s\n' '{"accessToken":"too-late-token"}' ;;
+  empty) printf '%s\n' '{"accessToken":""}' ;;
+  args) printf '{"accessToken":"%s"}\n' "$*" ;;
+  *) printf '%s\n' '{"accessToken":"fixture-cli-token","tokenType":"Bearer"}' ;;
+esac
