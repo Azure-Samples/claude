@@ -10,7 +10,7 @@ if ((int) ini_get('zend.assertions') < 1 || !filter_var(ini_get('assert.exceptio
 
 require __DIR__.'/../vendor/autoload.php';
 require __DIR__.'/support.php';
-foreach (['ClientFactoryTest', 'CliTokenProviderTest', 'SampleTest', 'EndToEndTest'] as $file) {
+foreach (['ClientFactoryTest', 'CliTokenProviderTest', 'SampleTest', 'MessageThreadsTest', 'EndToEndTest'] as $file) {
     require __DIR__."/$file.php";
 }
 

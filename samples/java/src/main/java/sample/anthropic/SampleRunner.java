@@ -40,6 +40,12 @@ public final class SampleRunner {
         TokenCredential create(SampleSettings settings);
     }
 
+    /** What a sample does with the client: it writes its own output and throws on failure. */
+    @FunctionalInterface
+    interface ClientCall {
+        void run(AnthropicClient client, SampleSettings settings) throws Exception;
+    }
+
     /** Raised when a successful HTTP response cannot count as a result (for example, no text). */
     static final class UnusableResponseException extends RuntimeException {
         private static final long serialVersionUID = 1L;
@@ -75,7 +81,24 @@ public final class SampleRunner {
             }
         }
         String prompt = promptWords.isEmpty() ? DEFAULT_PROMPT : String.join(" ", promptWords);
+        boolean streaming = stream;
+        return execute(environment, err, credentialFactory, (client, settings) -> {
+            MessageCreateParams params = MessageCreateParams.builder()
+                    .model(settings.model())
+                    .maxTokens(MAX_TOKENS)
+                    .addUserMessage(prompt)
+                    .build();
+            if (streaming) {
+                writeStream(client, params, out);
+            } else {
+                writeMessage(client, params, out);
+            }
+        });
+    }
 
+    /** Settings, one credential and one client around a single call, with an exit code for every outcome. */
+    static int execute(
+            Function<String, String> environment, PrintStream err, CredentialFactory credentialFactory, ClientCall call) {
         SampleSettings settings;
         try {
             settings = SampleSettings.fromEnvironment(environment);
@@ -110,16 +133,7 @@ public final class SampleRunner {
 
             // The SDK client is deliberately not AutoCloseable, so release it explicitly.
             try {
-                MessageCreateParams params = MessageCreateParams.builder()
-                        .model(settings.model())
-                        .maxTokens(MAX_TOKENS)
-                        .addUserMessage(prompt)
-                        .build();
-                if (stream) {
-                    writeStream(client, params, out);
-                } else {
-                    writeMessage(client, params, out);
-                }
+                call.run(client, settings);
             } finally {
                 client.close();
             }

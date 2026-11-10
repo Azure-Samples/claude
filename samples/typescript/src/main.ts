@@ -128,7 +128,7 @@ const HTTP_HINTS: Array<[(status: number) => boolean, string]> = [
   [(status) => status >= 500, 'The service reported an error. Retry later.'],
 ];
 
-function describeError(error: unknown, signal: AbortSignal, totalTimeoutMs: number): string {
+export function describeError(error: unknown, signal: AbortSignal, totalTimeoutMs: number): string {
   if (error instanceof ConfigError) return error.message;
   if (error instanceof ClientAuthError) {
     const cause = error.cause instanceof Error ? ` Cause: ${error.cause.name}.` : '';

@@ -34,7 +34,7 @@ final class Sample
     private const USAGE = "Usage: php main.php [--stream]\n";
 
     /** Variables whose values are credentials: they are removed from error output. */
-    private const KEY_VARIABLES = ['ANTHROPIC_API_KEY', 'CLAUDE_API_KEY', 'ANTHROPIC_AUTH_TOKEN'];
+    public const KEY_VARIABLES = ['ANTHROPIC_API_KEY', 'CLAUDE_API_KEY', 'ANTHROPIC_AUTH_TOKEN'];
 
     private const MAX_CAUSES = 5;
 
@@ -292,7 +292,7 @@ final class Sample
         return strlen($text) > self::MAX_MESSAGE_LENGTH ? substr($text, 0, self::MAX_MESSAGE_LENGTH).'...' : $text;
     }
 
-    private static function noText(?string $stopReason): string
+    public static function noText(?string $stopReason): string
     {
         return sprintf('No text response (stop_reason=%s). Increase max_tokens if the response exhausted its budget.', $stopReason ?? 'none');
     }

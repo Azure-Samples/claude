@@ -2,6 +2,7 @@
 //
 //	go run .                    print the reply text and token usage
 //	go run . -stream            stream the reply text as it arrives
+//	go run . -threads           send two turns on one message thread (beta); print the second reply
 //	go run . "your prompt"      use your own prompt (flags go before the prompt)
 //
 // It exits 0 only when the reply has text; thinking-only or empty replies and every error
@@ -30,7 +31,7 @@ import (
 const (
 	defaultPrompt = "What are 3 things to visit in Seattle?"
 	maxTokens     = 1024
-	usage         = "Usage: go run . [-stream] [prompt...]"
+	usage         = "Usage: go run . [-stream] [prompt...]\n       go run . -threads"
 )
 
 // totalTimeout is the application policy of this sample, not a helper default: the whole call,
@@ -55,6 +56,7 @@ func run(ctx context.Context, args []string, getenv func(string) string, stdout,
 	flags := flag.NewFlagSet("main", flag.ContinueOnError)
 	flags.SetOutput(io.Discard)
 	stream := flags.Bool("stream", false, "stream the reply text")
+	threads := flags.Bool("threads", false, "send two turns on one message thread (beta)")
 	if err := flags.Parse(args); err != nil {
 		if errors.Is(err, flag.ErrHelp) {
 			fmt.Fprintln(stdout, usage)
@@ -64,6 +66,10 @@ func run(ctx context.Context, args []string, getenv func(string) string, stdout,
 		return 2
 	}
 	prompt := strings.TrimSpace(strings.Join(flags.Args(), " "))
+	if *threads && (*stream || prompt != "") {
+		fmt.Fprintln(stderr, usage)
+		return 2
+	}
 	if prompt == "" {
 		prompt = defaultPrompt
 	}
@@ -92,9 +98,12 @@ func run(ctx context.Context, args []string, getenv func(string) string, stdout,
 	}
 
 	var code int
-	if *stream {
+	switch {
+	case *threads:
+		code, err = threadReply(ctx, client, loaded.model, stdout, stderr)
+	case *stream:
 		code, err = streamReply(ctx, client, params, stdout, stderr)
-	} else {
+	default:
 		code, err = printReply(ctx, client, params, stdout, stderr)
 	}
 	if err != nil {

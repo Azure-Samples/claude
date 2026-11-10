@@ -82,6 +82,16 @@ bundle exec ruby main.rb --stream   # the same request, streamed as it is genera
 
 Thinking blocks are not printed. A response without any text fails with a message and a non-zero exit status instead of reporting success; so do API errors, credential failures and bad configuration (exit status 1; an unknown argument exits with 2).
 
+## Message threads
+
+```sh
+bundle exec ruby message_threads.rb
+```
+
+This separate entrypoint uses the same configuration and prints the second reply. The SDK helper adds `anthropic-beta: message-threads-2026-08-12` and handles replay. See the [Threads guide](../message-threads.md).
+
+`ClaudeSample::MessageThreads.converse(client, model, stdout)` also accepts a standard client built with your own token provider.
+
 ## Authentication
 
 **`AUTH_MODE=bearer` is a local-development fallback** (the legacy profile's default; the canonical profile needs it set explicitly). The sample runs `az account get-access-token --scope <TOKEN_SCOPE> --output json` (adding `--tenant <AZURE_TENANT_ID>` when set) for every token request and sends the returned `accessToken` as `Authorization: Bearer`. The Azure CLI owns token caching and renewal; the sample keeps no cache. The price is one CLI process per HTTP attempt, which takes seconds on a typical machine.

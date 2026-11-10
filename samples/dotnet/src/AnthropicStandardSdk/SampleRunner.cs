@@ -34,13 +34,14 @@ internal static class SampleRunner
     internal static readonly TimeSpan RequestTimeout = TimeSpan.FromSeconds(120);
 
     private const string DefaultPrompt = "Say hello in one short sentence.";
-    private const string UsageText = "usage: AnthropicStandardSdk [--stream] [prompt...]";
+    private const string UsageText = "usage: AnthropicStandardSdk [--stream] [prompt...] | --threads";
 
     private static readonly Regex Whitespace = new Regex(@"\s+", RegexOptions.Compiled);
 
     /// <summary>
-    /// Runs one Messages call (or one streaming call with <c>--stream</c>). Environment access,
-    /// credential creation and the HTTP transport are parameters so tests can supply recording fakes.
+    /// Runs one Messages call, one streaming call with <c>--stream</c>, or the message-thread example with
+    /// <c>--threads</c>. Environment access, credential creation and the HTTP transport are parameters so
+    /// tests can supply recording fakes.
     /// </summary>
     public static async Task<int> RunAsync(
         string[] args,
@@ -52,6 +53,7 @@ internal static class SampleRunner
         Func<SampleSettings, TokenCredential>? credentialFactory = null)
     {
         bool stream = false;
+        bool threads = false;
         bool optionsEnded = false;
         List<string> promptWords = new List<string>();
         foreach (string arg in args)
@@ -63,6 +65,10 @@ internal static class SampleRunner
             else if (!optionsEnded && arg == "--stream")
             {
                 stream = true;
+            }
+            else if (!optionsEnded && arg == "--threads")
+            {
+                threads = true;
             }
             else if (!optionsEnded && (arg == "-h" || arg == "--help"))
             {
@@ -79,6 +85,13 @@ internal static class SampleRunner
             {
                 promptWords.Add(arg);
             }
+        }
+
+        if (threads && (stream || promptWords.Count > 0))
+        {
+            error.WriteLine("error: --threads takes no prompt and cannot be combined with --stream");
+            error.WriteLine(UsageText);
+            return ExitUsage;
         }
 
         string prompt = promptWords.Count > 0 ? string.Join(" ", promptWords) : DefaultPrompt;
@@ -139,6 +152,12 @@ internal static class SampleRunner
 
             using (client)
             {
+                if (threads)
+                {
+                    await ThreadsExample.RunAsync(client, settings.Model, output, cancellationToken).ConfigureAwait(false);
+                    return ExitOk;
+                }
+
                 MessageCreateParams parameters = new MessageCreateParams
                 {
                     Model = settings.Model,

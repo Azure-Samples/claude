@@ -5,7 +5,9 @@ Calls a Claude deployment through the **standard** Anthropic PHP SDK client (`An
 | File | Purpose |
 |---|---|
 | `main.php` | Entry point: one Messages call, printed whole or streamed (`--stream`). |
+| `message_threads.php` | Entry point: two turns on one [message thread](../message-threads.md). |
 | `src/Sample.php` | Reads the environment, builds the client, prints the text and usage. |
+| `src/MessageThreads.php` | The thread sample. `MessageThreads::converse()` runs it on any standard client. |
 | `src/ClientFactory.php` | The generic helper. `ClientFactory::createClient()` returns the standard client with exactly one explicit credential. It reads no environment variables and imports no cloud-provider code. |
 | `src/CliTokenProvider.php` | Token provider for local development: a command-line fallback that runs `az account get-access-token`. |
 | `tests/` | Offline tests: no cloud, no credentials. |
@@ -100,6 +102,16 @@ Both modes print only the text, then the token usage (the sample waits up to 120
 
 Thinking blocks are not printed. A response without any text fails with a message and a non-zero exit status instead of reporting success; so do API errors, credential failures and bad configuration (exit status 1; an unknown argument exits with 2). A failure prints `Error: ...` and then one `  caused by: ...` line per underlying error (for example the transport error behind an `APIConnectionException`), with credentials and token-like strings replaced by `[redacted]`.
 
+## Message threads
+
+```sh
+php message_threads.php   # two turns on one message thread
+```
+
+It uses the same configuration as `main.php` and prints the second reply. The SDK helper adds `anthropic-beta: message-threads-2026-08-12` and handles replay. See the [Threads guide](../message-threads.md).
+
+`MessageThreads::converse($client, $model, $stdout)` runs the same two turns on any standard client, for example one from `ClientFactory::createClient()` with your own token provider.
+
 ## Authentication
 
 **`AUTH_MODE=bearer` is a local-development fallback** (the legacy profile's default; the canonical profile needs it set explicitly). The sample runs `az account get-access-token --scope <TOKEN_SCOPE> --output json` (adding `--tenant <AZURE_TENANT_ID>` when set) for every token request and sends the returned `accessToken` as `Authorization: Bearer`. The Azure CLI owns token caching and renewal; the sample keeps no cache. The price is one CLI process per HTTP attempt, which takes seconds on a typical machine.
@@ -146,7 +158,7 @@ composer test
 
 The suite uses PHP's built-in `assert()` (the runner refuses to start with assertions off, which would pass silently) and needs no framework. It runs offline:
 
-- a recording PSR-18 transport checks the request the SDK builds: the Foundry-style and native paths and the model, a rotating bearer token, a resource key in `x-api-key` and the native `Authorization` key, the API version, no OAuth beta, canaries for `ANTHROPIC_API_KEY`, `ANTHROPIC_AUTH_TOKEN`, `ANTHROPIC_PROFILE`, `ANTHROPIC_BASE_URL` and `ANTHROPIC_CUSTOM_HEADERS` (with a control showing the SDK defaults would send them), streaming, HTTP error statuses, retries that fetch a fresh token, and redirects;
+- a recording PSR-18 transport checks the request the SDK builds: the Foundry-style and native paths and the model, a rotating bearer token, a resource key in `x-api-key` and the native `Authorization` key, the API version, no OAuth beta, canaries for `ANTHROPIC_API_KEY`, `ANTHROPIC_AUTH_TOKEN`, `ANTHROPIC_PROFILE`, `ANTHROPIC_BASE_URL` and `ANTHROPIC_CUSTOM_HEADERS` (with a control showing the SDK defaults would send them), streaming, HTTP error statuses, retries that fetch a fresh token, redirects, and the message threads sample (the beta on both turns; a create, then a continue with only the new message and no `system` or `tools`; a replay after a 404 `thread_not_found` and none after any other 404);
 - the token provider (`CliTokenProvider`) is tested with a fake process runner and with a fixture `az` (a `.cmd` on Windows, a shell script elsewhere) that is really launched;
 - the entry point is tested end to end, including mixed-family canaries (decoy `ANTHROPIC_*` and `CLAUDE_*` values must never be paired with the other profile's endpoint, model or key) and the 120 second policy; the error output (the cause chain behind a connection failure, credential redaction, the certificate hint) is tested with synthetic failures and with a real refused connection; a few tests talk to PHP's built-in web server on a loopback port through the default Guzzle transport (credential headers on a real socket, redirects, streaming and the timeout). Nothing leaves your machine.
 

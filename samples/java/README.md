@@ -48,6 +48,14 @@ mvn -q dependency:build-classpath "-Dmdep.outputFile=target/classpath.txt"
 java -cp "target/classes;$(Get-Content target/classpath.txt -Raw)" sample.anthropic.Main --stream "Say hello"   # use ':' on Linux/macOS
 ```
 
+## Message threads
+
+```powershell
+mvn -q compile exec:java "-Dexec.mainClass=sample.anthropic.MessageThreads"
+```
+
+This separate entrypoint uses the same configuration and prints the second reply. The SDK helper adds `anthropic-beta: message-threads-2026-08-12` and handles replay. See the [Threads guide](../message-threads.md).
+
 ## Configuration
 
 Read by the sample entrypoint only (never by `ClientFactory`). Real keys and IDs belong in the environment or a secret

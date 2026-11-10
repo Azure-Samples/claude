@@ -16,9 +16,7 @@ no SDK subclass and no provider-specific SDK package; `createClient` returns a p
 ## Requirements
 
 Node.js 24 or later. The `.ts` files run directly with Node's built-in type stripping, so there is no build
-step. Tested with Node.js 24.22 and 26.13, `@anthropic-ai/sdk` 1.1.0 and `@azure/identity` 4.14.0. The SDK source
-this sample relies on (the client's credential and header handling, `middleware`, the error classes and the stream
-helper) is unchanged in SDK 1.3.0, but 1.3.0 itself has not been tested.
+step. Tested with Node.js 24.22, `@anthropic-ai/sdk` 1.4.0 and `@azure/identity` 4.14.0.
 
 ## Run
 
@@ -52,6 +50,14 @@ Variables already set in the shell take precedence.
 The command exits 0 only when the reply contains text. A reply with only thinking, an empty reply, a
 configuration problem or any request error exits nonzero. Errors report the HTTP status and error type, never
 the credential, the endpoint, the model name or the response body.
+
+## Message threads
+
+```powershell
+npm run threads
+```
+
+The separate `src/message_threads.ts` example uses the same configuration and prints the second reply. The SDK helper adds `anthropic-beta: message-threads-2026-08-12` and handles replay. See the [Threads guide](../message-threads.md).
 
 ## Configuration
 

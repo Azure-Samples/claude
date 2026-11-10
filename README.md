@@ -203,6 +203,7 @@ $env:AZURE_TOKEN_CREDENTIALS = "AzureDeveloperCliCredential"
 python src/hello_claude.py                  # one-shot Messages call (Entra ID)
 python src/chat_stream.py                   # interactive streaming chat &mdash; type a message, `exit` to quit
 python src/hello_claude_token_refresh.py    # long-running variant with per-request token refresh
+python src/message_threads.py              # two-turn Message Threads beta
 ```
 
 <details>
@@ -239,7 +240,7 @@ The standard client does not consume `ANTHROPIC_FOUNDRY_RESOURCE`. The explicit 
 
 A captured static token eventually expires. [src/hello_claude_token_refresh.py](./src/hello_claude_token_refresh.py) uses a cached bearer-token callback instead. The standard SDK's request hook asks for the current token on every request and retry; Azure Identity caches and renews it. There is no custom token cache, retry loop, SDK subclass, or automatic native OAuth beta header.
 
-[requirements.txt](./requirements.txt) targets Anthropic SDK **2.1+** and Azure Identity **1.26+**, with upper bounds at the next major version. SDK 2.x uses `httpx2` for custom transports; it is not interchangeable with `httpx`.
+[requirements.txt](./requirements.txt) targets Anthropic SDK **2.4+** and Azure Identity **1.26+**, with upper bounds at the next major version. SDK 2.x uses `httpx2` for custom transports; it is not interchangeable with `httpx`.
 
 </details>
 
@@ -249,7 +250,7 @@ A captured static token eventually expires. [src/hello_claude_token_refresh.py](
 
 | Language | Sample and instructions |
 |---|---|
-| Python | [One-shot](./src/hello_claude.py), [streaming](./src/chat_stream.py), [token refresh](./src/hello_claude_token_refresh.py) |
+| Python | [One-shot](./src/hello_claude.py), [streaming](./src/chat_stream.py), [token refresh](./src/hello_claude_token_refresh.py), [threads](./src/message_threads.py) |
 | TypeScript | [samples/typescript](./samples/typescript/README.md) |
 | C# | [samples/dotnet](./samples/dotnet/README.md) |
 | Go | [samples/go](./samples/go/README.md) |
@@ -258,6 +259,8 @@ A captured static token eventually expires. [src/hello_claude_token_refresh.py](
 | Ruby | [samples/ruby](./samples/ruby/README.md) |
 
 Helpers return ordinary SDK clients; application code still calls the usual Messages and streaming APIs. [Shared configuration](./samples/README.md) selects the endpoint, model, authentication, key header and API version. The same samples can target Anthropic's native endpoint without changing imports or inference code.
+
+Separate [Message Threads examples](./samples/message-threads.md) opt into `anthropic-beta: message-threads-2026-08-12`. The guide includes SDK requirements and live Foundry compatibility checks.
 
 Python, TypeScript, C#, Go and Java use their official Azure Identity SDKs. PHP and Ruby accept a token-provider callback and use Azure CLI as a documented local fallback; this is **not** an official Azure Identity SDK for those languages.
 
@@ -547,6 +550,7 @@ claude/
 │   ├── hello_claude_apikey.py        # Same, but with an API key (dev/test only)
 │   ├── hello_claude_token_refresh.py # Long-running variant with auto-refreshing Entra token
 │   ├── chat_stream.py                # Streaming multi-turn chat loop
+│   ├── message_threads.py            # Two-turn Message Threads beta
 │   └── check_claude_quota.py         # Inspect Claude quota + capacity via ARM (see Advanced)
 ├── Get-ClaudeCatalog.ps1
 ├── requirements.txt

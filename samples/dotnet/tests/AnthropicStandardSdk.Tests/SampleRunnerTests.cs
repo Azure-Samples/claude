@@ -12,7 +12,7 @@ using Xunit;
 namespace AnthropicStandardSdk.Tests;
 
 /// <summary>The sample entrypoint end to end: environment, credential wiring, real SDK, output, exit codes.</summary>
-public sealed class SampleRunnerTests
+public sealed partial class SampleRunnerTests
 {
     private const string Foundry = TestClients.FoundryUrl;
 
