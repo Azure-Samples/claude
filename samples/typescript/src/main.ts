@@ -19,10 +19,10 @@ import { ConfigError } from './config_error.ts';
 import { configuredClient, loadSettings, type ClientOverrides, type Environment } from './sample_client.ts';
 
 const DEFAULT_PROMPT = 'What are 3 things to visit in Seattle?';
-const MAX_TOKENS = 1024;
+export const MAX_TOKENS = 1024;
 // Application policy of this sample, not a helper default: the whole call, including SDK retries and
 // streaming, ends after 120 seconds. The SDK's own per-attempt timeout and retry defaults are untouched.
-const TOTAL_TIMEOUT_MS = 120_000;
+export const TOTAL_TIMEOUT_MS = 120_000;
 const USAGE = 'Usage: node src/main.ts [--stream] [prompt...]';
 
 export interface Output {
@@ -114,7 +114,7 @@ async function streamReply(client: Anthropic, request: MessageRequest, signal: A
   return hasText ? 0 : noText(message.stop_reason, io);
 }
 
-function noText(stopReason: string | null, io: RunIO): number {
+export function noText(stopReason: string | null, io: RunIO): number {
   io.stderr.write(`No text response (stop_reason=${stopReason}). Increase max_tokens if the response exhausted its budget.\n`);
   return 1;
 }

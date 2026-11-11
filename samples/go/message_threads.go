@@ -15,10 +15,8 @@ const (
 	threadSecond = "What code did I ask you to remember? Reply with only the code."
 )
 
-// threadReply sends two turns on one message thread (beta) and prints the second reply. The SDK helper creates
-// the thread, continues it with only the new message, sets the beta header, and replays the conversation once
-// if a continue request fails with thread_not_found (or thread_already_continued or thread_continue_in_flight).
-// A thread is best effort, so the helper's history is the source of truth; there is no unthreaded fallback.
+// threadReply sends two turns on one message thread and prints the second reply. The SDK helper adds the beta
+// header and replays the conversation if the thread can no longer be continued.
 func threadReply(ctx context.Context, client anthropic.Client, model string, stdout, stderr io.Writer) (int, error) {
 	thread := client.Beta.Messages.NewThread(anthropic.BetaMessageThreadCreateParams{
 		Model:     anthropic.Model(model),

@@ -11,6 +11,7 @@ no SDK subclass and no provider-specific SDK package; `createClient` returns a p
 | `src/token_provider.ts` | Selects one Azure Identity credential and wraps it with `getBearerTokenProvider`. |
 | `src/sample_client.ts` | Reads the environment and builds the client for the sample. |
 | `src/main.ts` | Command-line entrypoint. |
+| `src/message_threads.ts` | Message Threads entrypoint (`npm run threads`). |
 | `test/` | Offline tests: the real SDK against loopback mock servers, run with Node's built-in test runner. |
 
 ## Requirements

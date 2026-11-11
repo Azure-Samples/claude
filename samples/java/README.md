@@ -12,6 +12,7 @@ retry loop.
 | `ClientFactory.java` | Generic helper. Builds the standard client with one explicit credential. Knows no identity library and reads no environment or system property. Copy this one file (it needs only the Anthropic SDK). |
 | `CredentialSelector.java` | The only code that uses Azure Identity: selects one credential class and adapts it to the helper's `Supplier<String>`. |
 | `SampleSettings.java`, `SampleRunner.java`, `Main.java` | Environment parsing, the Messages/streaming calls, output and exit codes. |
+| `MessageThreads.java` | Message Threads entrypoint. |
 
 Tests live in `src/test/java/sample/anthropic` and run offline.
 

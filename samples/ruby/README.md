@@ -5,6 +5,7 @@ Calls a Claude deployment through the **standard** Anthropic Ruby SDK client (`A
 | File | Purpose |
 |---|---|
 | `main.rb` | Entry point: one Messages call, printed whole or streamed (`--stream`). |
+| `message_threads.rb`, `lib/claude_sample/message_threads.rb` | Message Threads entrypoint and example. |
 | `lib/claude_sample/sample.rb` | Reads the environment, builds the client, prints the text and usage. |
 | `lib/claude_sample/client_factory.rb` | The generic helper. `ClaudeSample::ClientFactory.create_client` returns the standard client with exactly one explicit credential. It reads no environment variables and imports no cloud-provider code. |
 | `lib/claude_sample/cli_token_provider.rb` | Token provider for local development: a command-line fallback that runs `az account get-access-token`. |

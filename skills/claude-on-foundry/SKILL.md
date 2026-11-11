@@ -224,6 +224,7 @@ The full POSIX parallel-purge snippet lives in [README → Free quota held by so
 | [`src/hello_claude.py`](../../src/hello_claude.py) | One-shot Messages call (Entra ID) | — |
 | [`src/hello_claude_token_refresh.py`](../../src/hello_claude_token_refresh.py) | Long-running variant with per-request refresh | use for daemons / notebooks |
 | [`src/chat_stream.py`](../../src/chat_stream.py) | Streaming multi-turn REPL | `exit` to quit |
+| [`src/message_threads.py`](../../src/message_threads.py) | Two-turn Message Threads beta | — |
 
 Each `.ps1` has a `.sh` POSIX equivalent next to it.
 

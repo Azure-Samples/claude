@@ -6,7 +6,6 @@ namespace ClaudeSample;
 
 use Anthropic\Beta\Messages\BetaTextBlock;
 use Anthropic\Client;
-use Anthropic\Lib\Threads\UnsupportedRequestBehavior;
 use Psr\Http\Client\ClientInterface;
 
 final class MessageThreads
@@ -67,7 +66,6 @@ final class MessageThreads
             maxTokens: Sample::MAX_TOKENS,
             model: $model,
             system: self::SYSTEM,
-            unsupportedRequestBehavior: UnsupportedRequestBehavior::ERROR,
         );
         $thread->send(['role' => 'user', 'content' => self::FIRST_PROMPT]);
         $reply = $thread->send(['role' => 'user', 'content' => self::SECOND_PROMPT]);

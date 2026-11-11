@@ -81,7 +81,7 @@ Cloud provisioning remains the existing `azd up` workflow in one selected IaC va
 
 The migration was live-tested against a freshly provisioned Haiku 5.5 version 2 deployment in `eastus2`: all seven languages passed Messages, SSE streaming and resource-key authentication with native SDK defaults. Python, TypeScript, C#, Go and Java also passed a configuration-only switch between Azure CLI and Azure Developer CLI credentials. Native Anthropic endpoint routing is covered by offline recording transports; no native-account live test is claimed.
 
-The Threads examples were separately tested with the [SDK versions and Foundry checks](message-threads.md#sdk-checks) listed in their guide. TypeScript is now pinned to the tested SDK 1.4.0. Other runtime/version details are in the language READMEs.
+TypeScript now pins SDK 1.4.0 for Threads; its Messages, streaming and Threads paths also passed live bearer runs. Other runtime/version details are in the language READMEs.
 
 ## Upstream requests
 

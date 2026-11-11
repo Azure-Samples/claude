@@ -203,7 +203,7 @@ $env:AZURE_TOKEN_CREDENTIALS = "AzureDeveloperCliCredential"
 python src/hello_claude.py                  # one-shot Messages call (Entra ID)
 python src/chat_stream.py                   # interactive streaming chat &mdash; type a message, `exit` to quit
 python src/hello_claude_token_refresh.py    # long-running variant with per-request token refresh
-python src/message_threads.py              # two-turn Message Threads beta
+python src/message_threads.py               # two-turn Message Threads beta
 ```
 
 <details>
