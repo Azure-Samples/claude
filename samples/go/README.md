@@ -12,6 +12,7 @@ documented by the SDK.
 | `credential.go` | Selects one Azure Identity credential and turns it into a token provider. |
 | `settings.go`, `sample_client.go` | Read the environment and build the client for the sample. |
 | `main.go` | Command-line entrypoint. |
+| `message_threads.go` | `-threads`: the message threads example (beta), built on the SDK's `Beta.Messages.NewThread` helper. |
 | `*_test.go`, `internal/testserver` | Offline tests: the real SDK against loopback servers, with the standard `testing` package. |
 
 ## Requirements
@@ -46,6 +47,16 @@ The starter kit's legacy variables work too: `CLAUDE_BASE_URL` and `CLAUDE_DEPLO
 The command exits 0 only when the reply contains text. A reply with only thinking, an empty reply, a
 configuration problem or any request error exits nonzero (2 for a command-line usage error). Errors report the
 HTTP status and error type, never the credential, the endpoint, the model name or the response body.
+
+## Message threads
+
+```powershell
+go run . -threads             # prints the second reply: ORCHID-47
+```
+
+The separate `message_threads.go` example uses the same configuration and prints the second reply. It takes no prompt
+and cannot be combined with `-stream`. The SDK helper adds `anthropic-beta: message-threads-2026-08-12` and handles replay.
+See the [Threads guide](../message-threads.md).
 
 ## Configuration
 
@@ -146,4 +157,6 @@ header canaries (with a control proving the canaries are live), the selected key
 OAuth beta, user header and beta pass-through, streaming, 401/403/429/500 statuses, cancellation and timeouts,
 cross-origin and redirect safety, variable-family pairing (mixed `ANTHROPIC_*` and `CLAUDE_*` canaries),
 credential selection and the command's exit codes (the test binary starts
-itself as the command).
+itself as the command). The `-threads` tests check the create and continue requests on the wire (beta header on
+both turns, previous message ID, only the new message, no `system` or `tools`), the replay on `thread_not_found`
+and its absence on an unrelated 404.

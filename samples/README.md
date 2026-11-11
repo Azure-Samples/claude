@@ -14,6 +14,10 @@ Each language uses its standard Anthropic SDK client. Generic client/authenticat
 
 PHP/Ruby's CLI fallback is explicit because no current official Azure Identity SDK was identified for those languages. It is not a production managed-identity implementation. Supply an appropriate renewable-token callback in hosted applications.
 
+## Message Threads
+
+The separate [Threads examples](message-threads.md) send only the new turn after creating a conversation. They opt into `anthropic-beta: message-threads-2026-08-12`; the existing Messages and streaming examples do not. See the guide for run commands, SDK requirements and Foundry API findings.
+
 ## Configuration
 
 Python loads the gitignored root `.env.local`; the other entrypoints read process environment variables. Export the selected `azd` environment before running them. Never put real keys, tokens, tenant IDs or subscription IDs in checked-in configuration.
@@ -77,7 +81,7 @@ Cloud provisioning remains the existing `azd up` workflow in one selected IaC va
 
 The migration was live-tested against a freshly provisioned Haiku 5.5 version 2 deployment in `eastus2`: all seven languages passed Messages, SSE streaming and resource-key authentication with native SDK defaults. Python, TypeScript, C#, Go and Java also passed a configuration-only switch between Azure CLI and Azure Developer CLI credentials. Native Anthropic endpoint routing is covered by offline recording transports; no native-account live test is claimed.
 
-The TypeScript sample is pinned to the tested SDK 1.1.0 because the configured package feed did not provide 1.3.0 and direct public-registry access failed TLS negotiation in the test environment. Relevant 1.3.0 source was compared, but that package version was not executed. Other runtime/version details are in the language READMEs.
+TypeScript now pins SDK 1.4.0 for Threads; its Messages, streaming and Threads paths also passed live bearer runs. Other runtime/version details are in the language READMEs.
 
 ## Upstream requests
 

@@ -11,6 +11,7 @@ There is no `Anthropic.Foundry` package, client subclass, alternate Messages API
 | `src/AnthropicStandardSdk/ClientFactory.cs` | Generic helper. Builds the standard client with one explicit credential. Knows no identity library and reads no environment. Copy this one file (it needs only the `Anthropic` package). |
 | `src/AnthropicStandardSdk/CredentialSelector.cs` | The only code that uses Azure Identity: selects one credential class and adapts it to the helper's `TokenProvider` callback. |
 | `src/AnthropicStandardSdk/SampleSettings.cs`, `SampleRunner.cs`, `Program.cs` | Environment parsing, the Messages/streaming calls, output and exit codes. |
+| `src/AnthropicStandardSdk/ThreadsExample.cs` | The `--threads` message-thread example. Same settings, factory and credentials; no extra project. |
 | `tests/AnthropicStandardSdk.Tests` | Offline tests: the real SDK against recording transports and loopback servers. |
 
 ## Run
@@ -37,6 +38,17 @@ cause and HTTP status, never a token or key. Exit codes: `0` success, `1` reques
 or usage error. Each call uses `max_tokens` 1024 and a 120 second per-call timeout. The timeout is this sample's own
 policy, set explicitly in `SampleRunner`; `ClientFactory` keeps the SDK's timeout unless the caller sets `Timeout`.
 The SDK's default retries and cancellation behavior are unchanged.
+
+## Message threads
+
+`--threads` runs the separate example in `ThreadsExample.cs` with the same configuration and client:
+
+```powershell
+dotnet run --project samples/dotnet/src/AnthropicStandardSdk -- --threads
+```
+
+It prints the second reply and fails if there is no text. It takes no prompt and cannot be combined with `--stream`.
+The SDK helper adds `anthropic-beta: message-threads-2026-08-12` and handles replay. See the [Threads guide](../message-threads.md).
 
 ## Configuration
 
@@ -124,4 +136,4 @@ dotnet test samples/dotnet/AnthropicStandardSdk.sln
   not the retries.
 - `AzureCliCredential` and `AzureDeveloperCliCredential` need their CLI on `PATH`; use `ManagedIdentityCredential` in
   hosted environments.
-- Only the Messages and streaming calls are demonstrated. Other SDK APIs go through the same client and handler.
+- Only the Messages, streaming and message-thread calls are demonstrated. Other SDK APIs go through the same client and handler.

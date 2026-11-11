@@ -12,6 +12,7 @@ retry loop.
 | `ClientFactory.java` | Generic helper. Builds the standard client with one explicit credential. Knows no identity library and reads no environment or system property. Copy this one file (it needs only the Anthropic SDK). |
 | `CredentialSelector.java` | The only code that uses Azure Identity: selects one credential class and adapts it to the helper's `Supplier<String>`. |
 | `SampleSettings.java`, `SampleRunner.java`, `Main.java` | Environment parsing, the Messages/streaming calls, output and exit codes. |
+| `MessageThreads.java` | Message Threads entrypoint. |
 
 Tests live in `src/test/java/sample/anthropic` and run offline.
 
@@ -47,6 +48,14 @@ are unchanged.
 mvn -q dependency:build-classpath "-Dmdep.outputFile=target/classpath.txt"
 java -cp "target/classes;$(Get-Content target/classpath.txt -Raw)" sample.anthropic.Main --stream "Say hello"   # use ':' on Linux/macOS
 ```
+
+## Message threads
+
+```powershell
+mvn -q compile exec:java "-Dexec.mainClass=sample.anthropic.MessageThreads"
+```
+
+This separate entrypoint uses the same configuration and prints the second reply. The SDK helper adds `anthropic-beta: message-threads-2026-08-12` and handles replay. See the [Threads guide](../message-threads.md).
 
 ## Configuration
 

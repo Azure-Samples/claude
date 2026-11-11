@@ -5,6 +5,7 @@ Calls a Claude deployment through the **standard** Anthropic Ruby SDK client (`A
 | File | Purpose |
 |---|---|
 | `main.rb` | Entry point: one Messages call, printed whole or streamed (`--stream`). |
+| `message_threads.rb`, `lib/claude_sample/message_threads.rb` | Message Threads entrypoint and example. |
 | `lib/claude_sample/sample.rb` | Reads the environment, builds the client, prints the text and usage. |
 | `lib/claude_sample/client_factory.rb` | The generic helper. `ClaudeSample::ClientFactory.create_client` returns the standard client with exactly one explicit credential. It reads no environment variables and imports no cloud-provider code. |
 | `lib/claude_sample/cli_token_provider.rb` | Token provider for local development: a command-line fallback that runs `az account get-access-token`. |
@@ -81,6 +82,16 @@ bundle exec ruby main.rb --stream   # the same request, streamed as it is genera
 ```
 
 Thinking blocks are not printed. A response without any text fails with a message and a non-zero exit status instead of reporting success; so do API errors, credential failures and bad configuration (exit status 1; an unknown argument exits with 2).
+
+## Message threads
+
+```sh
+bundle exec ruby message_threads.rb
+```
+
+This separate entrypoint uses the same configuration and prints the second reply. The SDK helper adds `anthropic-beta: message-threads-2026-08-12` and handles replay. See the [Threads guide](../message-threads.md).
+
+`ClaudeSample::MessageThreads.converse(client, model, stdout)` also accepts a standard client built with your own token provider.
 
 ## Authentication
 

@@ -117,6 +117,17 @@ module ClaudeSample
         [client, model]
       end
 
+      # The failure message for a response without text.
+      def no_text(stop_reason)
+        "No text response (stop_reason=#{stop_reason || "none"}). Increase max_tokens if the response exhausted its budget."
+      end
+
+      # How the sample reports an error: its own messages as they are, any other error with its class name.
+      def describe(error)
+        own = error.instance_of?(ArgumentError) || error.instance_of?(RuntimeError)
+        own ? error.message : "#{error.class.name.split("::").last}: #{error.message}"
+      end
+
       private
 
       def message(client, model, stdout)
@@ -156,15 +167,6 @@ module ClaudeSample
         raise no_text(stop_reason) unless printed
 
         stdout.write("\n\n[usage] input=#{input} output=#{output}\n")
-      end
-
-      def no_text(stop_reason)
-        "No text response (stop_reason=#{stop_reason || "none"}). Increase max_tokens if the response exhausted its budget."
-      end
-
-      def describe(error)
-        own = error.instance_of?(ArgumentError) || error.instance_of?(RuntimeError)
-        own ? error.message : "#{error.class.name.split("::").last}: #{error.message}"
       end
 
       # The first of names that is set and not empty.

@@ -10,12 +10,13 @@
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
     "start": "node src/main.ts",
+    "threads": "node src/message_threads.ts",
     "typecheck": "tsc --noEmit",
     "pretest": "npm run typecheck",
     "test": "node --test --test-timeout=60000 \"test/*.test.ts\""
   },
   "dependencies": {
-    "@anthropic-ai/sdk": "1.1.0",
+    "@anthropic-ai/sdk": "1.4.0",
     "@azure/identity": "4.14.0"
   },
   "devDependencies": {

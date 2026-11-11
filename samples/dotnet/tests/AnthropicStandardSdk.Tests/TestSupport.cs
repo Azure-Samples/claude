@@ -187,8 +187,9 @@ internal sealed class RecordingTransport : HttpMessageHandler
 
 internal static class Responses
 {
-    public static HttpResponseMessage Message(string text = "OK", long inputTokens = 11, long outputTokens = 5) =>
-        Json(HttpStatusCode.OK, MessageJson(JsonSerializer.Serialize(text), inputTokens, outputTokens));
+    public static HttpResponseMessage Message(
+        string text = "OK", long inputTokens = 11, long outputTokens = 5, string id = "msg_test") =>
+        Json(HttpStatusCode.OK, MessageJson(JsonSerializer.Serialize(text), inputTokens, outputTokens, id));
 
     public static HttpResponseMessage ThinkingOnly() =>
         Json(HttpStatusCode.OK, """
@@ -197,8 +198,11 @@ internal static class Responses
              "stop_reason":"max_tokens","stop_sequence":null,"usage":{"input_tokens":11,"output_tokens":1024}}
             """);
 
-    public static HttpResponseMessage Error(HttpStatusCode status, string type, string message) =>
-        Json(status, $$$"""{"type":"error","error":{"type":"{{{type}}}","message":"{{{message}}}"}}""");
+    /// <summary>An API error; <paramref name="errorCode"/> becomes <c>error.details.error_code</c>.</summary>
+    public static HttpResponseMessage Error(HttpStatusCode status, string type, string message, string? errorCode = null) =>
+        Json(status, errorCode is null
+            ? $$$"""{"type":"error","error":{"type":"{{{type}}}","message":"{{{message}}}"}}"""
+            : $$$"""{"type":"error","error":{"details":{"error_code":"{{{errorCode}}}"},"type":"{{{type}}}","message":"{{{message}}}"}}""");
 
     public static HttpResponseMessage Redirect(HttpStatusCode status, string location)
     {
@@ -240,9 +244,9 @@ internal static class Responses
         };
     }
 
-    public static string MessageJson(string textLiteral, long inputTokens, long outputTokens) =>
+    public static string MessageJson(string textLiteral, long inputTokens, long outputTokens, string id = "msg_test") =>
         $$$"""
-        {"id":"msg_test","type":"message","role":"assistant","model":"test-model",
+        {"id":"{{{id}}}","type":"message","role":"assistant","model":"test-model",
          "content":[{"type":"text","text":{{{textLiteral}}}}],
          "stop_reason":"end_turn","stop_sequence":null,
          "usage":{"input_tokens":{{{inputTokens}}},"output_tokens":{{{outputTokens}}}}}
